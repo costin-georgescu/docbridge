@@ -19,6 +19,7 @@ The API verifies authorization, mints a short-lived URL for a specific file and 
 - \+ File bytes never traverse app servers.
 - \+ Storage natively supports large files (multipart) and parallel transfers.
 - \+ Access control enforced at issuance with a short lived URL as the credential.
+- \+ The presigned PUT binds content type and checksum; storage rejects a mismatched upload.
 - \- A leaked URL grants access until expiry, bounded by short TTL.
 - \- Staged files from abandoned sessions need lifecycle cleanup.
 

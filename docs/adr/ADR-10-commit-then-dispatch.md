@@ -28,7 +28,7 @@ API does records and queue messages before responding.
 
 API commits job + task records in a single transaction and acks, then a dispatcher publishes queue messages after submission.
 
-- \+ Request cost is a single DB transaction regardless of batch size which meets <500ms at p99 at 2,000 tasks.
+- \+ Request cost is one batched folder-to-team call to the platform plus a single DB transaction regardless of batch size, which meets <500ms at p99 at 2000 tasks.
 - \+ Committed records are the source of truth and a dispatcher crash delays tasks, doesn't lose them.
 - \+ Submission stays available even if the queue is briefly down.
 - \- Adds a dispatcher step that must retry until task messages are published.
@@ -47,6 +47,6 @@ API writes the job and submission mapping, publishes one 'job submitted' message
 
 **Option 2.**
 
-It removes the queue publishing from the request while creating task records at ack. The job is fully created and queryable at submission. Option 3 removes latency that was never the bottleneck at the cost of tasks that are not created yet with a more complex recovery path.
+It removes the queue publishing from the request while creating task records at ack. The job is fully created and queryable at submission. Option 3 removes latency that was never the bottleneck at the cost of tasks that are not created yet with a more complex recovery path. The request budget is that one platform call plus the transaction; nothing else runs inside it.
 
 **Ratified by:** Awaiting review

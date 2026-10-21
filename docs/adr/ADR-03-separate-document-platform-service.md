@@ -35,6 +35,6 @@ Hierarchy and documents stored in the metadata database next to jobs and tasks.
 
 **Option 1.**
 
-The platform stands in for an external product, so it gets its own service, database and storage, and DocBridge only uses its API. Auth service and DocBridge API still share the metadata database because they are two services of the same system. We accept running a second database and bucket.
+The platform stands in for an external product, so it gets its own service, database and storage, and DocBridge only uses its API. Database ownership for the auth service and DocBridge API is decided in ADR-15. We accept running separate databases and a second bucket.
 
 **Ratified by:** Awaiting review

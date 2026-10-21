@@ -1,0 +1,88 @@
+// DocBridge — Flow 2: File submission
+// Covers staging, submission ack and background delivery
+// Dashed self-arrows are local steps, not network calls
+
+title Flow 2: File submission
+
+webUI [icon: monitor, label: "Web UI"]
+api [icon: docker, label: "DocBridge API"]
+staging [icon: aws-simple-storage-service, label: "Staging"]
+uploadEvents [icon: aws-simple-queue-service, label: "Upload events"]
+dispatcher [icon: docker, label: "Dispatcher"]
+docbridgeDB [icon: aws-rds, label: "DocBridge DB"]
+queue [icon: aws-simple-queue-service, label: "Task queue"]
+dlq [icon: aws-simple-queue-service, color: red, label: "DLQ"]
+workers [icon: docker, label: "Workers"]
+platform [icon: docker, label: "Document platform"]
+
+// Staging — bytes never touch the API (ADR-08)
+loop [label: "per selected file (up to 100)"] {
+  webUI > api: "request upload (name, type, size, checksum; rejects non-allowlisted types)"
+  api > docbridgeDB: "staged file record (pending upload)"
+  api --> api: "mint presigned PUT (content type + checksum bound)"
+  api > webUI: "presigned URL"
+  webUI > staging: "file bytes (multipart above threshold)"
+  staging --> staging: "validate checksum on upload"
+  // Storage tells us the file landed, not the browser (ADR-13)
+  staging > uploadEvents: "object created event"
+  uploadEvents > dispatcher: "file staged"
+  dispatcher > docbridgeDB: "staged file record -> staged"
+}
+
+// Mapping overlaps uploads; Submit unlocks when the API reports all files staged (ADR-09, ADR-13)
+webUI --> webUI: "user maps files to destination folders"
+loop [label: "poll until all files staged"] {
+  webUI > api: "GET staged-file status"
+  api > docbridgeDB: "staged file records"
+  api > webUI: "per-file staged / pending"
+}
+
+// Submission — one platform call + one transaction, then ack (ADR-10)
+webUI > api: "submit job (file ids, folder ids, mapping)"
+api > platform: "which team owns each destination folder?"
+platform > api: "folder -> team"
+alt [label: "any folder outside caller's team claims", color: red] {
+  api > webUI: "403 rejected, nothing committed"
+}
+else [label: "any referenced file not staged", color: red] {
+  api > webUI: "409 file not staged, nothing committed"
+}
+else [label: "all folders authorized, all files staged"] {
+  api > docbridgeDB: "BEGIN: job (submitter id + team ids) + all task records (pending)"
+  api > webUI: "202 job accepted (< 500 ms p99)"
+}
+
+// Background dispatch — after ack, retried until every task is published (ADR-10)
+loop [label: "dispatcher scan"] {
+  dispatcher > docbridgeDB: "tasks without queue message"
+  dispatcher > queue: "enqueue task"
+  dispatcher > docbridgeDB: "mark dispatched"
+}
+
+// Background delivery — at least once, idempotent (ADR-11)
+loop [label: "per task message"] {
+  queue > workers: "consume task"
+  workers > docbridgeDB: "task in-progress, attempt recorded"
+  workers > staging: "fetch bytes"
+  workers --> workers: "re-verify checksum, check file signature"
+  workers > platform: "deliver file + checksum (service credential, task id as idempotency key, submitter id)"
+  alt [label: "delivery succeeds"] {
+    platform --> platform: "verify checksum, store new document version"
+    platform > workers: "accepted (or already delivered for this task id)"
+    workers > docbridgeDB: "task completed"
+  }
+  else [label: "delivery fails", color: red] {
+    workers > docbridgeDB: "attempt + error recorded"
+    opt [label: "last allowed attempt"] {
+      workers > docbridgeDB: "task failed with last error"
+    }
+    workers > queue: "message returns, retried with backoff (at least 3 attempts)"
+  }
+}
+
+opt [label: "retries exhausted", color: red] {
+  queue > dlq: "message parked (SQS redrive)"
+}
+
+// Expected outcome: instant confirmation, delivery completes without intervention,
+// one failed task never affects the others in the job

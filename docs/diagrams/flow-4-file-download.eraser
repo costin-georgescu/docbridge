@@ -1,0 +1,31 @@
+// DocBridge — Flow 4: File download
+// Bytes come straight from staging, never through the API (ADR-08)
+// Dashed self-arrows are local steps, not network calls
+
+title Flow 4: File download
+
+webUI [icon: monitor, label: "Web UI"]
+api [icon: docker, label: "DocBridge API"]
+docbridgeDB [icon: aws-rds, label: "DocBridge DB"]
+staging [icon: aws-simple-storage-service, label: "Staging"]
+
+webUI > api: "request download (job id, file id, token)"
+api --> api: "verify token signature locally"
+api > docbridgeDB: "job's submitter team ids + staged file key"
+docbridgeDB > api: "job + file record"
+
+alt [label: "requester shares no team with submitter", color: red] {
+  api > webUI: "403 not visible"
+}
+else [label: "requester shares a team with submitter"] {
+  api --> api: "mint presigned GET (short TTL)"
+  api > webUI: "presigned URL"
+  webUI > staging: "GET file bytes"
+  staging > webUI: "file"
+}
+
+// Staged copy stays downloadable for 30 days after job completion,
+// then the lifecycle policy deletes it (rule keyed on a completion tag)
+staging --> staging: "lifecycle: delete 30 days after job completion"
+
+// Expected outcome: team transparency over all sent documents

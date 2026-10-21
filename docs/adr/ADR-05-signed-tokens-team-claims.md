@@ -4,7 +4,7 @@
 
 ## Context
 
-Auth service owns users and memberships (ADR-04). The API, document platform and workers all need to know the caller's identity and teams on every request. Services run as separate containers (ADR-02).
+Auth service owns users and memberships (ADR-04). The API and document platform need the caller's identity and teams on every request; workers act under a service credential. Services run as separate containers (ADR-02).
 
 ## Decision required
 

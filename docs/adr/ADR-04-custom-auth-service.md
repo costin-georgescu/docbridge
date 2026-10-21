@@ -4,7 +4,7 @@
 
 ## Context
 
-Users need to be authenticated before performing any kind of operation so it can be tracked back to them. Accounts are provided by an admin and team memberships are stored in the meta database. Managed AWS services are permitted as per ADR-01 and services we run use the compute platform settled in ADR-02.
+Users need to be authenticated before performing any kind of operation so it can be tracked back to them. Accounts are provided by an admin and team memberships are stored in the auth database (ADR-15). Managed AWS services are permitted as per ADR-01 and services we run use the compute platform settled in ADR-02.
 
 ## Decision required
 
@@ -36,6 +36,6 @@ AWS managed identity service.
 
 **Option 1.**
 
-The identity model is trivial and tightly coupled to team memberships, which are hosted in our database. Cognito would add a user store to sync while its benefits sit unused. We accept owning credential code, backed by mature libraries. Auth service is the single source of users and team memberships; how other services consume them is decided in ADR-05.
+The identity model is trivial and tightly coupled to team memberships, which live in the auth database (ADR-15). Cognito would add a user store to sync while its benefits sit unused. We accept owning credential code, backed by mature libraries. Auth service is the single source of users and team memberships; how other services consume them is decided in ADR-05.
 
 **Ratified by:** Awaiting review

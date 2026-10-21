@@ -4,7 +4,7 @@
 
 ## Context
 
-The system runs long lived services on AWS (ADR-01): the API, auth service and workers consuming the task queue. Workers fetch files up to 1 GB in size, verify checksums and deliver to the platform. This implies long running, disk touching work. Scale is modest at 200 concurrent users.
+The system runs long lived services on AWS (ADR-01): the API, auth service, document platform, dispatcher and workers consuming the task queue. Workers fetch files up to 1 GB in size, verify checksums and deliver to the platform. This implies long running, disk touching work. Scale is modest at 200 concurrent users.
 
 ## Decision required
 

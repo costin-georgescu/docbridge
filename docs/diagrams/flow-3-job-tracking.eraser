@@ -1,0 +1,35 @@
+// DocBridge — Flow 3: Job tracking
+// Status reaches the UI by polling, no persistent connection (ADR-12)
+// Dashed self-arrows are local steps, not network calls
+
+title Flow 3: Job tracking
+
+webUI [icon: monitor, label: "Web UI"]
+api [icon: docker, label: "DocBridge API"]
+docbridgeDB [icon: aws-rds, label: "DocBridge DB"]
+workers [icon: docker, label: "Workers"]
+
+// Job history — visibility = requester shares a team with the submitter
+webUI > api: "GET jobs (token)"
+api --> api: "verify token signature locally"
+api > docbridgeDB: "jobs WHERE submitter team ids overlap token claims"
+docbridgeDB > api: "active + past jobs"
+api --> api: "derive job status from task statuses"
+api > webUI: "job list with aggregate status"
+
+// Job detail
+webUI > api: "GET job (token)"
+api > docbridgeDB: "tasks: file, destination, status, attempts, last error"
+docbridgeDB > api: "task records"
+api > webUI: "per-task status, failed tasks carry descriptive errors"
+
+// Automatic refresh until every task is in a final state
+loop [label: "poll interval, until job is completed or failed"] {
+  workers --> docbridgeDB: "status updates written as deliveries progress"
+  webUI > api: "GET job (token)"
+  api > docbridgeDB: "current task records"
+  docbridgeDB > api: "task records"
+  api > webUI: "updated statuses"
+}
+
+// Expected outcome: the user knows which deliveries landed, which failed and why

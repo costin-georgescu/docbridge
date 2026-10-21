@@ -1,0 +1,33 @@
+// DocBridge — Flow 1: Browse destinations
+// ALB omitted: pass-through only, no logic on this path
+// Dashed self-arrows are local steps, not network calls
+
+title Flow 1: Browse destinations
+
+webUI [icon: monitor, label: "Web UI"]
+auth [icon: docker, label: "Auth Service"]
+api [icon: docker, label: "DocBridge API"]
+platform [icon: docker, label: "Document platform"]
+authDB [icon: aws-rds, label: "Auth DB"]
+platformDB [icon: aws-rds, label: "Platform DB"]
+
+// Login
+webUI > auth: "login (credentials)"
+auth > authDB: "verify credentials, load team memberships"
+authDB > auth: "user + team ids"
+auth > webUI: "signed token (user id + team claims, short TTL) (ADR-05)"
+
+// Destination tree — no local copy, no cache (ADR-07)
+webUI > api: "GET destinations (token)"
+api --> api: "verify token signature locally"
+api > platform: "destination tree (token forwarded)"
+platform --> platform: "verify token signature locally"
+platform > platformDB: "teams, binders, folders WHERE team IN token claims"
+platformDB > platform: "filtered hierarchy"
+platform > api: "tree scoped to caller's teams"
+api > webUI: "tree (< 1 s at 50 teams)"
+
+// Browsing happens client-side on the loaded tree
+webUI --> webUI: "user expands teams > binders > folders"
+
+// Expected outcome: user only sees the hierarchy they are authorized to view

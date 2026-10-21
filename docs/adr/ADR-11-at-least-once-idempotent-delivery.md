@@ -14,7 +14,7 @@ How do we retry failed deliveries and what happens when the same task message is
 
 ### 1. At least once queue with idempotent delivery
 
-Standard queue. A failed task returns to the queue and is retried with backoff. After the retry limit the message is moved to a dead-letter queue and the task is marked failed with the last error. Workers send the task id as an idempotency key, so the platform ignores a repeat delivery of the same task.
+Standard queue. A failed task returns to the queue and is retried with backoff. After the retry limit the message is moved to a dead-letter queue. Workers send the task id as an idempotency key, so the platform ignores a repeat delivery of the same task.
 
 - \+ Retries and dead-lettering are queue features, nothing to build.
 - \+ A duplicate message produces no duplicate document version.
@@ -42,6 +42,6 @@ A redelivered task creates another version on the platform, no idempotency.
 
 **Option 1.**
 
-Retries and the dead-letter queue come with the managed queue, and the task id as idempotency key makes duplicate processing harmless. Workers record every attempt and the final error on the task, so nothing fails silently. We accept storing the idempotency key on the platform side.
+Retries and the dead-letter queue come with the managed queue, and the task id as idempotency key makes duplicate processing harmless. Workers record every attempt and error on the task: the worker marks it failed on the last allowed attempt, then SQS moves the message to the dead-letter queue on its own redrive. We accept storing the idempotency key on the platform side.
 
 **Ratified by:** Awaiting review

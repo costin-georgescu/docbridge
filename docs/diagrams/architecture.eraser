@@ -1,0 +1,79 @@
+// DocBridge — blueprint architecture
+// Grouped by ownership: each service owns its stores (ADR-03, ADR-15).
+// All services run as ECS Fargate tasks (ADR-02).
+
+webUI [icon: monitor, label: "Web UI"]
+
+AWS {
+  cdn [icon: aws-cloudfront, label: "CDN"]
+  alb [icon: aws-elb-application-load-balancer, label: "ALB"]
+  kms [icon: aws-key-management-service, label: "KMS"]
+
+  Auth {
+    auth [icon: aws-fargate, label: "Auth Service"]
+    authDB [icon: aws-rds, label: "Auth DB"]
+  }
+
+  DocBridge {
+    api [icon: aws-fargate, label: "DocBridge API"]
+    staging [icon: aws-simple-storage-service, label: "Staging"]
+    uploadEvents [icon: aws-simple-queue-service, label: "Upload events"]
+    dispatcher [icon: aws-fargate, label: "Dispatcher"]
+    docbridgeDB [icon: aws-rds, label: "DocBridge DB"]
+    queue [icon: aws-simple-queue-service, label: "Task queue"]
+    dlq [icon: aws-simple-queue-service, color: red, label: "DLQ"]
+    workers [icon: aws-fargate, label: "Workers"]
+  }
+
+  Document Platform {
+    platform [icon: aws-fargate, label: "Platform API"]
+    platformDB [icon: aws-rds, label: "Platform DB"]
+    platformStorage [icon: aws-simple-storage-service, label: "Platform storage"]
+  }
+}
+
+// Client paths
+webUI > cdn: "UI assets"
+webUI > alb: "REST + token, status polling"
+webUI > staging: "file bytes (presigned PUT/GET)"
+
+// Entry point — one backend for the browser, platform stays private (ADR-14)
+alb > auth: "login"
+alb > api: "REST + token"
+
+// Token verification is local; public key fetched once at startup (ADR-05)
+api --> auth: "public key"
+platform --> auth: "public key"
+
+// Auth
+auth > authDB: "users, memberships"
+
+// DocBridge — staging and submission (ADR-08, ADR-09, ADR-10, ADR-13)
+api > docbridgeDB: "jobs, tasks, staged files, status reads"
+staging > uploadEvents: "object created"
+uploadEvents > dispatcher: "file staged"
+dispatcher > docbridgeDB: "mark staged, mark dispatched"
+dispatcher > queue: "enqueue task"
+
+// DocBridge — delivery (ADR-11, ADR-12)
+queue > workers: "consume, at-least-once"
+queue > dlq: "retries exhausted"
+workers > staging: "fetch bytes"
+workers > docbridgeDB: "task status, attempts"
+
+// Cross-boundary calls into the platform — the only two callers (ADR-14)
+api > platform: "destination tree, folder -> team check"
+workers > platform: "deliver (service credential + task id + submitter id)"
+
+// Platform stores
+platform > platformDB: "hierarchy, documents"
+platform > platformStorage: "document bytes"
+
+// Encryption at rest on every store, one key service, no in-app crypto
+kms --> Auth: "encryption at rest"
+kms --> DocBridge: "encryption at rest"
+kms --> Document Platform: "encryption at rest"
+
+legend {
+  [connection: -->, label: "Not on request path (key fetch / encryption)"]
+}

@@ -1,14 +1,14 @@
-# ADR-06: Relational database for the metadata store
+# ADR-06: Relational database for the auth and DocBridge stores
 
 **Status:** Awaiting review | **Date:** 05.10.2026 | **Author:** Costin Georgescu
 
 ## Context
 
-System persists users, team memberships, jobs, per-task delivery records and staged file metadata with queries that are relational by nature. Tasks belong to jobs, jobs belong to users. Submission must commit a job plus all its task records in one atomic transaction (ADR-10).
+The auth service persists users and team memberships; the DocBridge API persists jobs, per-task delivery records and staged file metadata (ADR-15). Both datasets are relational by nature: tasks belong to jobs, users own memberships. Submission must commit a job plus all its task records in one atomic transaction (ADR-10).
 
 ## Decision required
 
-Which database model backs the metadata store?
+Which database model backs the auth and DocBridge databases?
 
 ## Alternatives evaluated
 
