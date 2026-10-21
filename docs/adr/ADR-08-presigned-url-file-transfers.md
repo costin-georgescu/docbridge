@@ -1,6 +1,6 @@
 # ADR-08: Direct transfer via presigned URLs
 
-**Status:** Awaiting review | **Date:** 05.10.2026 | **Author:** Costin Georgescu
+**Status:** Awaiting review | **Date:** 05.10.2026 | **Updated:** 21.10.2026 | **Author:** Costin Georgescu
 
 ## Context
 

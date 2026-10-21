@@ -44,12 +44,16 @@ platform > api: "folder -> team"
 alt [label: "any folder outside caller's team claims", color: red] {
   api > webUI: "403 rejected, nothing committed"
 }
-else [label: "any referenced file not staged", color: red] {
-  api > webUI: "409 file not staged, nothing committed"
-}
-else [label: "all folders authorized, all files staged"] {
-  api > docbridgeDB: "BEGIN: job (submitter id + team ids) + all task records (pending)"
-  api > webUI: "202 job accepted (< 500 ms p99)"
+else [label: "all folders authorized"] {
+  api > docbridgeDB: "BEGIN: verify all files staged; job (submitter id + team ids) + all task records (pending)"
+  alt [label: "any referenced file not staged", color: red] {
+    docbridgeDB > api: "ROLLBACK"
+    api > webUI: "409 file not staged, nothing committed"
+  }
+  else [label: "all files staged"] {
+    docbridgeDB > api: "COMMIT"
+    api > webUI: "202 job accepted (< 500 ms p99)"
+  }
 }
 
 // Background dispatch — after ack, retried until every task is published (ADR-10)
@@ -73,15 +77,14 @@ loop [label: "per task message"] {
   }
   else [label: "delivery fails", color: red] {
     workers > docbridgeDB: "attempt + error recorded"
-    opt [label: "last allowed attempt"] {
-      workers > docbridgeDB: "task failed with last error"
+    alt [label: "attempts remain (at least 3 total)"] {
+      workers > queue: "message returns, retried with backoff"
     }
-    workers > queue: "message returns, retried with backoff (at least 3 attempts)"
+    else [label: "last allowed attempt", color: red] {
+      workers > docbridgeDB: "task failed with last error"
+      queue > dlq: "message parked (SQS redrive)"
+    }
   }
-}
-
-opt [label: "retries exhausted", color: red] {
-  queue > dlq: "message parked (SQS redrive)"
 }
 
 // Expected outcome: instant confirmation, delivery completes without intervention,

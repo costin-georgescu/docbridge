@@ -18,14 +18,14 @@ Designed against a spec simulating a real clinical document distribution system.
 
 ### Key Terminologies
 
-| Term        | Definition                                                           |
-| ----------- | -------------------------------------------------------------------- |
-| Team        | Highest organizational level, owns binders, declares permissions.    |
-| Binder      | Document collection within a team.                                   |
-| Folder      | Optional binder subdivision for organizing documents.                |
-| Destination | A folder where a file is delivered.                                  |
-| Job         | Process for a submission batch, the actual unit tracked by the user. |
-| Task        | A single file to destination delivery process.                       |
+| Term        | Definition                                                            |
+| ----------- | --------------------------------------------------------------------- |
+| Team        | Highest organizational level, owns binders, declares permissions.     |
+| Binder      | Document collection within a team.                                    |
+| Folder      | Optional binder subdivision for organizing documents (can be nested). |
+| Destination | A folder where a file is delivered.                                   |
+| Job         | Process for a submission batch, the actual unit tracked by the user.  |
+| Task        | A single file to destination delivery process.                        |
 
 ### Related Documentation
 
@@ -36,7 +36,7 @@ Designed against a spec simulating a real clinical document distribution system.
 ### Assumptions
 
 - Files delivered to a folder are visible to all users with access to that team's folders.
-- Delivery destinations are folders only; teams and binders are browsing levels (open question 2, resolved).
+- Delivery destinations are folders only; teams and binders are browsing levels (open question 2, resolved by reviewer decision; this deviates from the spec's "teams, binders, folders" and means a binder with no folders cannot receive deliveries).
 - In case of users losing access mid-job, file distribution will continue until completion.
 - When a file with the same name already exists, the system creates a new version of that document while retaining the previous.
 - Authorization grants users full access to that team's resources, no role specific authorization for v1 (ex. read-only auditor).
@@ -81,8 +81,8 @@ Designed against a spec simulating a real clinical document distribution system.
 1. The browser computes a checksum for each file and uploads the file directly to staging storage through a presigned URL.
 2. Storage validates the checksum on upload ([ADR-08](adr/ADR-08-presigned-url-file-transfers.md)).
 3. Staging storage emits an object-created event to the upload events queue. The dispatcher consumes it and marks the file staged, so the API knows a file is in storage without trusting the browser ([ADR-13](adr/ADR-13-upload-completion-storage-events.md)).
-4. The UI polls staged-file status from the API; Submit is enabled only when every file is marked staged, and the API rejects a submission that references an unstaged file.
-5. Uploads run in the background while the user maps destinations ([ADR-09](adr/ADR-09-stage-before-submission.md)).
+4. Uploads run in the background while the user maps destinations ([ADR-09](adr/ADR-09-stage-before-submission.md)).
+5. The UI polls staged-file status from the API; Submit is enabled only when every file is marked staged, and the API rejects a submission that references an unstaged file.
 6. A worker picks up each task, fetches the file from staging, re-verifies the checksum and delivers the file together with its checksum through the document platform's API.
 7. The platform verifies the checksum on receipt before storing the document version.
 8. The staged copy stays available for download through a presigned GET for 30 days after job completion, then the lifecycle policy deletes it.
@@ -91,7 +91,7 @@ Designed against a spec simulating a real clinical document distribution system.
 ### Asynchronous processing and failure handling
 
 - Submission commits the job and all task records in one transaction and acknowledges immediately. The request consists of one batched folder-to-team lookup against the platform and one database transaction. Queue publishing happens after the ack, done by the dispatcher ([ADR-10](adr/ADR-10-commit-then-dispatch.md)).
-- A failed delivery is retried automatically at least 3 times. On the last allowed attempt the worker marks the task failed with the last error, then the message moves to the dead-letter queue ([ADR-11](adr/ADR-11-at-least-once-idempotent-delivery.md)).
+- A failed delivery is attempted at least 3 times in total. On the last allowed attempt the worker marks the task failed with the last error, then the message moves to the dead-letter queue ([ADR-11](adr/ADR-11-at-least-once-idempotent-delivery.md)).
 - A worker crash can cause the same task message to be processed twice. Workers send the task id as an idempotency key so the platform ignores the repeat delivery ([ADR-11](adr/ADR-11-at-least-once-idempotent-delivery.md)).
 - One failed task never affects the other tasks in the same job. Job status is derived from the status of its tasks.
 - The UI refreshes status on a polling interval, no persistent connection needed ([ADR-12](adr/ADR-12-ui-status-polling.md)).
@@ -158,8 +158,9 @@ Decisions and their reasoning live in the [architecture decision records](adr/) 
 ## Open questions
 
 1. Can users manually re-run failed tasks? Resolved: not in R1 scope.
-2. Can binders accept delivery? Resolved: folders only; teams/binders are browse-only levels.
+2. Can binders accept delivery? Resolved: folders only, per reviewer decision; teams/binders are browse-only levels.
 3. How long should a revoked membership stay valid?
+4. What is the workers' service credential — an auth-issued service token verified with the same public key, or a static secret from the secrets manager? Mechanism decided in the TDD.
 
 ## Technical Design
 

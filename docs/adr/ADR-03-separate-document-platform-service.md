@@ -1,6 +1,6 @@
 # ADR-03: Document platform runs as a separate service with its own stores
 
-**Status:** Awaiting review | **Date:** 05.10.2026 | **Author:** Costin Georgescu
+**Status:** Awaiting review | **Date:** 05.10.2026 | **Updated:** 21.10.2026 | **Author:** Costin Georgescu
 
 ## Context
 

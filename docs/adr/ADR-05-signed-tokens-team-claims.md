@@ -1,6 +1,6 @@
 # ADR-05: Signed tokens carry team claims; services verify locally
 
-**Status:** Awaiting review | **Date:** 05.10.2026 | **Author:** Costin Georgescu
+**Status:** Awaiting review | **Date:** 05.10.2026 | **Updated:** 21.10.2026 | **Author:** Costin Georgescu
 
 ## Context
 
@@ -43,6 +43,6 @@ Copy syncs from auth service.
 
 **Option 1.**
 
-The platform filters the destination tree by the team claims in the token (ADR-07) and the API uses the same claims for job and download visibility. Workers deliver with a service credential and record the submitting user id, so delivery doesn't depend on the user's token lifetime. We accept that a revoked membership stays valid until the token expires, bounded by a short TTL set in the TDD.
+The platform filters the destination tree by the team claims in the token (ADR-07) and the API uses the same claims for job and download visibility. Workers deliver with a service credential and pass the submitting user id, which the platform records on the document version, so delivery doesn't depend on the user's token lifetime. Which credential mechanism the workers use is an open question for the TDD (auth-issued service token vs. static secret from the secrets manager); the platform must be able to verify it either way. We accept that a revoked membership stays valid until the token expires, bounded by a short TTL set in the TDD.
 
 **Ratified by:** Awaiting review

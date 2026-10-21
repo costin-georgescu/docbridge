@@ -1,6 +1,6 @@
 # ADR-06: Relational database for the auth and DocBridge stores
 
-**Status:** Awaiting review | **Date:** 05.10.2026 | **Author:** Costin Georgescu
+**Status:** Awaiting review | **Date:** 05.10.2026 | **Updated:** 21.10.2026 | **Author:** Costin Georgescu
 
 ## Context
 
@@ -43,6 +43,6 @@ Flexible JSON documents.
 
 **Option 1.**
 
-The data structure is relational by nature: jobs own tasks, users own memberships. ADR-10 depends on writing a job plus all its task records in one atomic transaction, which the NoSQL option can't do at 2,000 records. Postgres covers the workload comfortably and its scaling limits aren't a concern for v1.
+The data structure is relational by nature: jobs own tasks, users own memberships. ADR-10 depends on writing a job plus all its task records in one atomic transaction, which the NoSQL option can't do at 2,000 records. Postgres covers the workload comfortably and its scaling limits aren't a concern for v1. The platform database (ADR-03) follows the same choice.
 
 **Ratified by:** Awaiting review

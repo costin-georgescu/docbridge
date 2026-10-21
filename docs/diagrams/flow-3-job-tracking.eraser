@@ -1,6 +1,6 @@
 // DocBridge — Flow 3: Job tracking
 // Status reaches the UI by polling, no persistent connection (ADR-12)
-// Dashed self-arrows are local steps, not network calls
+// Dashed arrows are local steps or background activity, not request-path calls
 
 title Flow 3: Job tracking
 

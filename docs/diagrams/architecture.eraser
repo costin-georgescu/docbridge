@@ -26,7 +26,7 @@ AWS {
   }
 
   Document Platform {
-    platform [icon: aws-fargate, label: "Platform API"]
+    platform [icon: aws-fargate, label: "Document platform"]
     platformDB [icon: aws-rds, label: "Platform DB"]
     platformStorage [icon: aws-simple-storage-service, label: "Platform storage"]
   }
@@ -57,7 +57,7 @@ dispatcher > queue: "enqueue task"
 
 // DocBridge — delivery (ADR-11, ADR-12)
 queue > workers: "consume, at-least-once"
-queue > dlq: "retries exhausted"
+queue > dlq: "attempts exhausted"
 workers > staging: "fetch bytes"
 workers > docbridgeDB: "task status, attempts"
 

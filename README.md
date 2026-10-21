@@ -14,12 +14,12 @@ Batch distribution of clinical trial documents into a permission-controlled docu
 
 ## Architecture at a glance
 
-Everything runs on AWS as ECS Fargate services behind one load balancer, with LocalStack for local development (ADR-01, ADR-02).
+Everything runs on AWS as ECS Fargate services, with LocalStack for local development (ADR-01, ADR-02). A single load balancer fronts the API and auth service; the document platform stays private (ADR-14).
 
 - **Web UI** served from a CDN, talks to one backend: the **DocBridge API**. The **auth service** issues short-lived JWTs carrying the user's team ids, which the API and the document platform verify locally (ADR-04, ADR-05, ADR-14).
 - **Uploads** go from the browser straight to **staging storage** through presigned URLs. An object-created event tells the dispatcher a file is staged; submit unlocks only when every file is confirmed in storage (ADR-08, ADR-09, ADR-13).
 - **Submission** is one platform call plus one database transaction that writes the job and all its tasks, acknowledged in under 500 ms regardless of batch size. A **dispatcher** publishes tasks to an SQS **task queue** after the ack (ADR-10).
-- **Workers** consume tasks at least once, re-verify the checksum and deliver to the **document platform** under a service credential with the task id as idempotency key. Three or more retries, then the worker marks the task failed and the message lands in a dead-letter queue (ADR-11).
+- **Workers** consume tasks at least once, re-verify the checksum and deliver to the **document platform** under a service credential with the task id as idempotency key. At least 3 delivery attempts; on the last failure the worker marks the task failed and the message lands in a dead-letter queue (ADR-11).
 - **Status** reaches the UI by polling; the job state is derived from its tasks (ADR-12).
 - **Data** lives in three Postgres databases, one per owner: auth, DocBridge, platform (ADR-03, ADR-06, ADR-15). The platform also has its own storage. Every store is encrypted at rest with KMS. The document platform is never publicly reachable.
 
