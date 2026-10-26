@@ -1,6 +1,6 @@
 # ADR-15: Auth service and DocBridge API own separate databases
 
-**Status:** Awaiting review | **Date:** 21.10.2026 | **Author:** Costin Georgescu
+**Status:** Awaiting review | **Date:** 21.10.2026 | **Updated:** 23.10.2026 | **Author:** Costin Georgescu
 
 ## Context
 
@@ -43,6 +43,6 @@ Both services read and write the same tables.
 
 **Option 1.**
 
-The two services share no queries, so separating the data is free at the application level and removes credential data from the API's reach. In R1 both databases run on one Multi-AZ Postgres instance with separate credentials; moving to separate instances is an operational change, not a design one. We accept one more database to run. This supersedes the shared metadata database statement in ADR-03.
+The two services share no queries, so separating the data is free at the application level and removes credential data from the API's reach. In R1 both databases run on one Multi-AZ Postgres instance with separate credentials. Moving to separate instances is an operational change, not a design one. We accept one more database to run. This supersedes the shared metadata database statement in ADR-03.
 
 **Ratified by:** Awaiting review

@@ -1,6 +1,6 @@
 # DocBridge — PAS-001 Blueprint
 
-**Status:** Ready for review | **Owner:** Costin Georgescu | **Updated:** 21.10.2026
+**Status:** Ready for review | **Owner:** Costin Georgescu | **Updated:** 26.10.2026
 
 ## What problem we're solving and why
 
@@ -57,24 +57,24 @@ Designed against a spec simulating a real clinical document distribution system.
 
 [System Design diagram](https://app.eraser.io/workspace/Vk4jEqnF0LIV0BCPlIG3?origin=share)
 
-| Component           | Responsibility                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web UI              | Destination browsing, file selection and mapping, job submission, live status views, downloads initiation (presigned URLs).                                                                                                                                                                                                                                                   |
-| CDN                 | Serves the web UI assets to the browser.                                                                                                                                                                                                                                                                                                                                      |
-| Load balancer (ALB) | Single public entry point. Routes requests to DocBridge API and auth service, terminates TLS.                                                                                                                                                                                                                                                                                 |
-| Auth service        | Manages users, credentials and team memberships. Issues signed tokens that other services verify locally.                                                                                                                                                                                                                                                                     |
-| Auth database       | Stores users, credentials and team memberships. Owned by the auth service ([ADR-15](adr/ADR-15-separate-auth-and-docbridge-databases.md)).                                                                                                                                                                                                                                    |
-| DocBridge API       | Acknowledges job submissions and commits job + task records in one transaction after checking that all files are staged. Serves authorized destination hierarchy, staged-file status and job status, issues presigned URLs after auth check.                                                                                                                                  |
-| DocBridge database  | Stores jobs, staged file metadata and task delivery records. Owned by the DocBridge API.                                                                                                                                                                                                                                                                                      |
-| Staging storage     | Holds file bytes between upload and delivery so that they don't pass through the API. Provides downloads directly, deletes files 30 days after job completion as per the retention policy (lifecycle rule keyed on a completion tag applied when the job finishes).                                                                                                           |
-| Upload events queue | Receives object-created events from staging storage. Consumed by the dispatcher to mark staged files as ready for submission ([ADR-13](adr/ADR-13-upload-completion-storage-events.md)).                                                                                                                                                                                      |
-| Dispatcher          | Scans committed jobs for tasks that have no queue message yet and publishes them, retrying until every task is dispatched. Consumes upload events and marks staged files so submission can verify each file is in storage without calling it ([ADR-13](adr/ADR-13-upload-completion-storage-events.md)).                                                                      |
-| Task queue          | Holds pending delivery messages durably and decouples submission from processing. Retries failed messages and parks exhausted ones in a dead letter queue.                                                                                                                                                                                                                    |
-| Workers             | Consume task messages, fetch files from staging, verify integrity and deliver to the document platform via its API using a service credential, passing the submitter's user id so the stored document version records who sent it. Record every attempt and error on the task, including marking it failed on the final attempt. Repeat delivery of the same task is ignored. |
-| Document platform   | The destination document management platform. Owns the team, binder, folder hierarchy, filters it by the team claims in the caller's token, stores delivered documents and handles duplicates via versioning. Not publicly reachable; called only by the DocBridge API and the workers ([ADR-14](adr/ADR-14-platform-access-through-api.md)).                                 |
-| Platform database   | Stores teams, binders, folders and document records with versions. Owned by the document platform.                                                                                                                                                                                                                                                                            |
-| Platform storage    | Holds delivered file bytes for the document platform.                                                                                                                                                                                                                                                                                                                         |
-| KMS                 | Holds and manages encryption keys for data at rest, no in app crypto.                                                                                                                                                                                                                                                                                                         |
+| Component           | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Web UI              | Destination browsing, file selection and mapping, job submission, live status views, downloads initiation (presigned URLs).                                                                                                                                                                                                                                                                                              |
+| CDN                 | Serves the web UI assets to the browser.                                                                                                                                                                                                                                                                                                                                                                                 |
+| Load balancer (ALB) | Single public entry point. Routes requests to the DocBridge API, the auth service and the platform's `GET /tree`, terminates TLS.                                                                                                                                                                                                                                                                                        |
+| Auth service        | Manages users, credentials and team memberships. Issues signed tokens that other services verify locally.                                                                                                                                                                                                                                                                                                                |
+| Auth database       | Stores users, credentials and team memberships. Owned by the auth service ([ADR-15](adr/ADR-15-separate-auth-and-docbridge-databases.md)).                                                                                                                                                                                                                                                                               |
+| DocBridge API       | Acknowledges job submissions and commits job + task records in one transaction after checking that all files are staged. Serves staged-file status and job status, issues presigned URLs after auth check.                                                                                                                                                                                                               |
+| DocBridge database  | Stores jobs, staged file metadata and task delivery records. Owned by the DocBridge API.                                                                                                                                                                                                                                                                                                                                 |
+| Staging storage     | Holds file bytes between upload and delivery so that they don't pass through the API. Provides downloads directly, deletes files 30 days after job completion as per the retention policy (lifecycle rule keyed on a completion tag applied when the job finishes).                                                                                                                                                      |
+| Upload events queue | Receives object-created events from staging storage. Consumed by the dispatcher to mark staged files as ready for submission ([ADR-13](adr/ADR-13-upload-completion-storage-events.md)).                                                                                                                                                                                                                                 |
+| Dispatcher          | Scans committed jobs for tasks that have no queue message yet and publishes them, retrying until every task is dispatched. Consumes upload events and marks staged files so submission can verify each file is in storage without calling it ([ADR-13](adr/ADR-13-upload-completion-storage-events.md)).                                                                                                                 |
+| Task queue          | Holds pending delivery messages durably and decouples submission from processing. Retries failed messages and parks exhausted ones in a dead letter queue.                                                                                                                                                                                                                                                               |
+| Workers             | Consume task messages, fetch files from staging, verify integrity and deliver to the document platform via its API using a service credential, passing the submitter's user id so the stored document version records who sent it. Record every attempt and error on the task, including marking it failed on the final attempt. Repeat delivery of the same task is ignored.                                            |
+| Document platform   | The destination document management platform. Owns the team, binder, folder hierarchy, filters it by the team claims in the caller's token, stores delivered documents and handles duplicates via versioning. Publicly reachable only for `GET /tree` via the load balancer; delivery, resolve and admin endpoints are called only by the DocBridge API and the workers ([ADR-14](adr/ADR-14-platform-read-via-alb.md)). |
+| Platform database   | Stores teams, binders, folders and document records with versions. Owned by the document platform.                                                                                                                                                                                                                                                                                                                       |
+| Platform storage    | Holds delivered file bytes for the document platform.                                                                                                                                                                                                                                                                                                                                                                    |
+| KMS                 | Holds and manages encryption keys for data at rest, no in app crypto.                                                                                                                                                                                                                                                                                                                                                    |
 
 ### File lifecycle
 
@@ -110,7 +110,7 @@ Sequence diagram: [flow-1-browse-destinations.eraser](diagrams/flow-1-browse-des
 
 ### Flow 2: File submission
 
-Sequence diagram: [flow-2-file-submission.eraser](diagrams/flow-2-file-submission.eraser)
+Sequence diagrams: [flow-2a-file-submission.eraser](diagrams/flow-2a-file-submission.eraser) (user path, ends at the ack), [flow-2b-background-delivery.eraser](diagrams/flow-2b-background-delivery.eraser) (dispatch and delivery)
 
 1. Files are selected for upload and staging initiates.
 2. User maps files to destination folders.
@@ -139,7 +139,7 @@ Sequence diagram: [flow-4-file-download.eraser](diagrams/flow-4-file-download.er
 
 ## Decisions with Architectural Impact
 
-Decisions and their reasoning live in the [architecture decision records](adr/) — ADR-01 through ADR-15. Implementation-level decisions go in the TDD.
+[Architecture decision records](adr/)
 
 ## Security
 
@@ -153,24 +153,24 @@ Decisions and their reasoning live in the [architecture decision records](adr/) 
 - Staged files are deleted 30 days after job completion as per lifecycle policy.
 - Secrets are injected via environment/secrets manager, nothing in source code.
 - All datastores encrypt at rest via KMS: staging, platform storage, Auth DB, DocBridge DB and Platform DB.
-- The document platform is not publicly reachable; it is called only by the DocBridge API and the workers ([ADR-14](adr/ADR-14-platform-access-through-api.md)).
+- The document platform is publicly reachable only for the destination tree read, which requires a valid token; delivery and admin endpoints are never routed on the load balancer ([ADR-14](adr/ADR-14-platform-read-via-alb.md)).
 
 ## Open questions
 
 1. Can users manually re-run failed tasks? Resolved: not in R1 scope.
 2. Can binders accept delivery? Resolved: folders only, per reviewer decision; teams/binders are browse-only levels.
-3. How long should a revoked membership stay valid?
-4. What is the workers' service credential — an auth-issued service token verified with the same public key, or a static secret from the secrets manager? Mechanism decided in the TDD.
+3. How long should a revoked membership stay valid? Resolved: 15 minutes, the access token TTL ([TDD 4.1](tdd.md)).
+4. What is the workers' service credential — an auth-issued service token verified with the same public key, or a static secret from the secrets manager? Resolved: auth-issued service token ([ADR-21](adr/ADR-21-worker-service-credential.md)).
 
 ## Technical Design
 
-Once the architecture and user flows above are aligned with stakeholders and the design team, engineering writes the TDD. All schemas, API contracts, task estimates, edge cases, and the launch plan live there.
+[Technical design document](tdd.md). All schemas, API contracts, task estimates, edge cases and the launch plan.
 
 ## Releases
 
 ### Release 1: Core
 
-**Target Date:** TBD | **Status:** Planned | **Total Estimate:** After TDD
+**Target Date:** TBD | **Status:** Planned | **Total Estimate:** 40 days ([TDD 8](tdd.md#8-estimate-summary))
 
 Scope (feature level):
 

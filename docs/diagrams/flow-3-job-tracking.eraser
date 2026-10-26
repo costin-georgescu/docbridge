@@ -24,7 +24,7 @@ docbridgeDB > api: "task records"
 api > webUI: "per-task status, failed tasks carry descriptive errors"
 
 // Automatic refresh until every task is in a final state
-loop [label: "poll interval, until job is completed or failed"] {
+loop [label: "poll interval, until the job reaches a final state"] {
   workers --> docbridgeDB: "status updates written as deliveries progress"
   webUI > api: "GET job (token)"
   api > docbridgeDB: "current task records"

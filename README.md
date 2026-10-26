@@ -1,6 +1,6 @@
 # DocBridge
 
-DocBridge turns a repetitive clinical-trial workflow into one action: pick files once, map each file to many destination folders across teams and binders, submit the batch, track every delivery. The manual version is one upload per file per destination — 10 documents into 15 binders means 150 uploads with no retries and no record of what landed. Files stage in S3, workers deliver them in the background, and each file-to-destination pair is a task with its own status and error trail.
+DocBridge turns a repetitive clinical-trial workflow into one action: pick files once, map each file to many destination folders across teams and binders, submit the batch, track every delivery. The manual version is one upload per file per destination, meaning 10 documents into 15 binders means 150 uploads with no retries and no record of what landed. Files stage in S3, workers deliver them in the background, and each file-to-destination pair is a task with its own status and error trail.
 
 ## Documents
 
@@ -25,7 +25,7 @@ DocBridge turns a repetitive clinical-trial workflow into one action: pick files
 
 ## Architecture overview
 
-- Uploads go browser → staging over presigned URLs; a storage event marks each file staged, and Submit unlocks only when all are confirmed.
+- Uploads go straight from the browser to staging over presigned URLs; a storage event marks each file staged, and Submit unlocks only when all are confirmed.
 - Submission claims the staged files and commits the job with all its tasks in one transaction, acknowledged in under 500 ms; a dispatcher then scans undispatched tasks and publishes them to SQS.
 - Workers consume tasks, re-verify the CRC32C checksum and stream into the platform under a service token — the task id doubles as the idempotency key; after 3 attempts the message parks in a DLQ.
 - Job status is derived from its tasks and polled by the UI; downloads are presigned GETs, so file bytes never pass through the API.

@@ -1,8 +1,9 @@
-// DocBridge — Flow 2: File submission
-// Covers staging, submission ack and background delivery
+// DocBridge — Flow 2a: File submission
+// User-facing path: staging, mapping and the submission ack. Ends at 202.
+// Background dispatch and delivery continue in flow-2b.
 // Dashed self-arrows are local steps, not network calls
 
-title Flow 2: File submission
+title Flow 2a: File submission
 
 webUI [icon: monitor, label: "Web UI"]
 api [icon: docker, label: "DocBridge API"]
@@ -10,9 +11,6 @@ staging [icon: aws-simple-storage-service, label: "Staging"]
 uploadEvents [icon: aws-simple-queue-service, label: "Upload events"]
 dispatcher [icon: docker, label: "Dispatcher"]
 docbridgeDB [icon: aws-rds, label: "DocBridge DB"]
-queue [icon: aws-simple-queue-service, label: "Task queue"]
-dlq [icon: aws-simple-queue-service, color: red, label: "DLQ"]
-workers [icon: docker, label: "Workers"]
 platform [icon: docker, label: "Document platform"]
 
 // Staging — bytes never touch the API (ADR-08)
@@ -22,6 +20,10 @@ loop [label: "per selected file (up to 100)"] {
   api --> api: "mint presigned PUT (content type + checksum bound)"
   api > webUI: "presigned URL"
   webUI > staging: "file bytes (multipart above threshold)"
+  alt [label: "multipart upload"] {
+    webUI > api: "complete upload (part etags)"
+    api > staging: "CompleteMultipartUpload (checksum bound)"
+  }
   staging --> staging: "validate checksum on upload"
   // Storage tells us the file landed, not the browser (ADR-13)
   staging > uploadEvents: "object created event"
@@ -39,6 +41,7 @@ loop [label: "poll until all files staged"] {
 
 // Submission — one platform call + one transaction, then ack (ADR-10)
 webUI > api: "submit job (file ids, folder ids, mapping)"
+// server-to-server on the internal service name — never routed (ADR-14)
 api > platform: "which team owns each destination folder?"
 platform > api: "folder -> team"
 alt [label: "any folder outside caller's team claims", color: red] {
@@ -56,36 +59,5 @@ else [label: "all folders authorized"] {
   }
 }
 
-// Background dispatch — after ack, retried until every task is published (ADR-10)
-loop [label: "dispatcher scan"] {
-  dispatcher > docbridgeDB: "tasks without queue message"
-  dispatcher > queue: "enqueue task"
-  dispatcher > docbridgeDB: "mark dispatched"
-}
-
-// Background delivery — at least once, idempotent (ADR-11)
-loop [label: "per task message"] {
-  queue > workers: "consume task"
-  workers > docbridgeDB: "task in-progress, attempt recorded"
-  workers > staging: "fetch bytes"
-  workers --> workers: "re-verify checksum, check file signature"
-  workers > platform: "deliver file + checksum (service credential, task id as idempotency key, submitter id)"
-  alt [label: "delivery succeeds"] {
-    platform --> platform: "verify checksum, store new document version"
-    platform > workers: "accepted (or already delivered for this task id)"
-    workers > docbridgeDB: "task completed"
-  }
-  else [label: "delivery fails", color: red] {
-    workers > docbridgeDB: "attempt + error recorded"
-    alt [label: "attempts remain (at least 3 total)"] {
-      workers > queue: "message returns, retried with backoff"
-    }
-    else [label: "last allowed attempt", color: red] {
-      workers > docbridgeDB: "task failed with last error"
-      queue > dlq: "message parked (SQS redrive)"
-    }
-  }
-}
-
-// Expected outcome: instant confirmation, delivery completes without intervention,
-// one failed task never affects the others in the job
+// Expected outcome: instant confirmation. Dispatch and delivery continue in
+// flow-2b without the user waiting

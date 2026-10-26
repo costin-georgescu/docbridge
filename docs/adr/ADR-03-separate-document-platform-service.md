@@ -1,6 +1,6 @@
 # ADR-03: Document platform runs as a separate service with its own stores
 
-**Status:** Awaiting review | **Date:** 05.10.2026 | **Updated:** 21.10.2026 | **Author:** Costin Georgescu
+**Status:** Awaiting review | **Date:** 05.10.2026 | **Updated:** 23.10.2026 | **Author:** Costin Georgescu
 
 ## Context
 
@@ -19,7 +19,7 @@ Platform runs as its own container (ADR-02), owns the team, binder, folder hiera
 - \+ Mirrors the real situation where DocBridge integrates with a product it doesn't own.
 - \+ The API between them is the contract, which is what the spec describes.
 - \+ Platform can be deployed and tested separately.
-- \- Two databases and two buckets to run and encrypt.
+- \- A second database and bucket to run and encrypt.
 - \- Hierarchy and membership live in different systems, which needs ADR-05.
 
 ### 2. Module of DocBridge sharing the metadata database

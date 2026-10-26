@@ -18,6 +18,7 @@ AWS {
     api [icon: aws-fargate, label: "DocBridge API"]
     staging [icon: aws-simple-storage-service, label: "Staging"]
     uploadEvents [icon: aws-simple-queue-service, label: "Upload events"]
+    uploadEventsDLQ [icon: aws-simple-queue-service, color: red, label: "Upload events DLQ"]
     dispatcher [icon: aws-fargate, label: "Dispatcher"]
     docbridgeDB [icon: aws-rds, label: "DocBridge DB"]
     queue [icon: aws-simple-queue-service, label: "Task queue"]
@@ -34,35 +35,48 @@ AWS {
 
 // Client paths
 webUI > cdn: "UI assets"
-webUI > alb: "REST + token, status polling"
+webUI > alb: "REST + token"
 webUI > staging: "file bytes (presigned PUT/GET)"
 
-// Entry point — one backend for the browser, platform stays private (ADR-14)
-alb > auth: "login"
+// Live updates — the UI polls job status through the API; no push (ADR-12)
+webUI > alb: "poll job status"
+
+// Entry point — the ALB routes api, the enumerated public auth paths (login, refresh, users, jwks — service-token stays internal) and the platform's only public path (ADR-14)
+alb > auth: "public auth paths"
 alb > api: "REST + token"
+alb > platform: "GET /tree"
 
 // Token verification is local; public key fetched once at startup (ADR-05)
 api --> auth: "public key"
 platform --> auth: "public key"
+workers --> auth: "service token"
 
 // Auth
 auth > authDB: "users, memberships"
 
-// DocBridge — staging and submission (ADR-08, ADR-09, ADR-10, ADR-13)
+// DocBridge — staging and submission (ADR-08, ADR-09, ADR-10)
 api > docbridgeDB: "jobs, tasks, staged files, status reads"
-staging > uploadEvents: "object created"
+// Control-plane call only: the API completes multipart uploads server-side so S3 validates the full-object checksum; file bytes never flow through the API
+api > staging: "complete multipart upload"
+
+// Upload notification — S3 emits object-created events to a dedicated queue; the dispatcher consumes them and marks files staged (ADR-13)
+staging > uploadEvents: "object created event"
 uploadEvents > dispatcher: "file staged"
+uploadEvents > uploadEventsDLQ: "events exhausted"
+
+// Dispatch — the same dispatcher publishes committed tasks to the task queue (ADR-10)
 dispatcher > docbridgeDB: "mark staged, mark dispatched"
+dispatcher > staging: "retention tag, orphan cleanup"
 dispatcher > queue: "enqueue task"
 
-// DocBridge — delivery (ADR-11, ADR-12)
+// DocBridge — delivery (ADR-11)
 queue > workers: "consume, at-least-once"
 queue > dlq: "attempts exhausted"
 workers > staging: "fetch bytes"
 workers > docbridgeDB: "task status, attempts"
 
-// Cross-boundary calls into the platform — the only two callers (ADR-14)
-api > platform: "destination tree, folder -> team check"
+// Internal calls into the platform — delivery and resolve are never routed (ADR-14)
+api > platform: "folder -> team check"
 workers > platform: "deliver (service credential + task id + submitter id)"
 
 // Platform stores

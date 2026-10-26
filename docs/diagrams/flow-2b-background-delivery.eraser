@@ -1,0 +1,52 @@
+// DocBridge — Flow 2b: Background dispatch and delivery
+// Everything after the submission ack (flow-2a ends at 202); no user involved (ADR-10)
+// Dashed self-arrows are local steps, not network calls
+
+title Flow 2b: Background dispatch and delivery
+
+dispatcher [icon: docker, label: "Dispatcher"]
+docbridgeDB [icon: aws-rds, label: "DocBridge DB"]
+queue [icon: aws-simple-queue-service, label: "Task queue"]
+dlq [icon: aws-simple-queue-service, color: red, label: "DLQ"]
+workers [icon: docker, label: "Workers"]
+staging [icon: aws-simple-storage-service, label: "Staging"]
+platform [icon: docker, label: "Document platform"]
+
+// Dispatch — after ack, retried until every task is published (ADR-10)
+loop [label: "dispatcher scan"] {
+  dispatcher > docbridgeDB: "tasks without queue message"
+  dispatcher > queue: "enqueue task"
+  dispatcher > docbridgeDB: "mark dispatched"
+}
+
+// Delivery — at least once, idempotent (ADR-11)
+loop [label: "per task message"] {
+  queue > workers: "consume task"
+  workers > docbridgeDB: "task in-progress, attempt recorded"
+  workers > staging: "fetch bytes"
+  workers --> workers: "re-verify checksum, check file signature"
+  // server-to-server on the internal service name — never routed (ADR-14)
+  workers > platform: "deliver file + checksum (service credential, task id as idempotency key, submitter id)"
+  alt [label: "delivery succeeds"] {
+    platform --> platform: "verify checksum, store new document version"
+    platform > workers: "accepted (or already delivered for this task id)"
+    workers > docbridgeDB: "task completed"
+  }
+  else [label: "delivery fails", color: red] {
+    workers > docbridgeDB: "attempt + error recorded"
+    alt [label: "permanent error (checksum, signature, folder not found, other 4xx)", color: red] {
+      workers > docbridgeDB: "task failed, message deleted (no DLQ)"
+    }
+    else [label: "retryable, attempts remain (3 total)"] {
+      workers > docbridgeDB: "task pending"
+      workers > queue: "message returns, retried with backoff"
+    }
+    else [label: "retryable, last allowed attempt", color: red] {
+      workers > docbridgeDB: "task failed with last error"
+      queue > dlq: "message parked (SQS redrive)"
+    }
+  }
+}
+
+// Expected outcome: every task reaches a final state; one failed task never
+// affects the others in the job

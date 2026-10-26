@@ -24,8 +24,9 @@ else [label: "requester shares a team with submitter"] {
   staging > webUI: "file"
 }
 
-// Staged copy stays downloadable for 30 days after job completion,
-// then the lifecycle policy deletes it (rule keyed on a completion tag)
-staging --> staging: "lifecycle: delete 30 days after job completion"
+// Staged copy stays downloadable for 30 days after job completion —
+// the lifecycle rule deletes 32 days after object creation, keyed on a
+// completion tag applied when the job finishes (TDD 9.2)
+staging --> staging: "lifecycle: delete 32 days after object creation"
 
 // Expected outcome: team transparency over all sent documents
