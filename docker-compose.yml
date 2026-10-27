@@ -1,0 +1,116 @@
+name: docbridge
+
+# Bind-mount only source dirs (not the repo root) so host node_modules
+# never leak into the containers; every service gets the same mounts.
+x-src-volumes: &src-volumes
+  - ./apps/api/src:/workspace/apps/api/src
+  - ./apps/auth/src:/workspace/apps/auth/src
+  - ./apps/platform/src:/workspace/apps/platform/src
+  - ./apps/dispatcher/src:/workspace/apps/dispatcher/src
+  - ./apps/worker/src:/workspace/apps/worker/src
+  - ./apps/web/src:/workspace/apps/web/src
+  - ./apps/web/index.html:/workspace/apps/web/index.html
+  - ./apps/web/vite.config.ts:/workspace/apps/web/vite.config.ts
+  - ./packages/contracts/src:/workspace/packages/contracts/src
+  - ./packages/auth-core/src:/workspace/packages/auth-core/src
+  - ./packages/config/src:/workspace/packages/config/src
+  - ./packages/storage/src:/workspace/packages/storage/src
+  - ./packages/db-auth/src:/workspace/packages/db-auth/src
+  - ./packages/db-docbridge/src:/workspace/packages/db-docbridge/src
+  - ./packages/db-platform/src:/workspace/packages/db-platform/src
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/app.Dockerfile
+  env_file: .env
+  volumes: *src-volumes
+  depends_on:
+    postgres:
+      condition: service_healthy
+    localstack:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  localstack:
+    image: localstack/localstack:4.14.0
+    environment:
+      SERVICES: s3,sqs,kms,secretsmanager
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./docker/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  api:
+    <<: *app
+    command: pnpm --filter @docbridge/api dev
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge
+    ports:
+      - "3000:3000"
+
+  auth:
+    <<: *app
+    command: pnpm --filter @docbridge/auth dev
+    environment:
+      PORT: "3001"
+      DATABASE_URL: postgresql://auth_app:auth_app@postgres:5432/auth
+    ports:
+      - "3001:3001"
+
+  platform:
+    <<: *app
+    command: pnpm --filter @docbridge/platform dev
+    environment:
+      PORT: "3002"
+      DATABASE_URL: postgresql://platform_app:platform_app@postgres:5432/platform
+    ports:
+      - "3002:3002"
+
+  dispatcher:
+    <<: *app
+    command: pnpm --filter @docbridge/dispatcher dev
+    environment:
+      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge
+
+  worker:
+    <<: *app
+    command: pnpm --filter @docbridge/worker dev
+    environment:
+      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    env_file: .env
+    volumes: *src-volumes
+    command: pnpm --filter @docbridge/web dev
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:
+  localstack-data:

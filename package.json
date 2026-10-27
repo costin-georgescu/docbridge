@@ -11,7 +11,10 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest"
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "dev": "docker compose up",
+    "dev:down": "docker compose down",
+    "dev:reset": "docker compose down -v"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

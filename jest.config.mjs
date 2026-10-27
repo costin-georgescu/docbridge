@@ -14,6 +14,13 @@ export default {
       transform: { "^.+\\.tsx?$": tsTransform },
     },
     {
+      displayName: "config",
+      rootDir: "packages/config",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+    },
+    {
       displayName: "api",
       rootDir: "apps/api",
       testEnvironment: "node",
