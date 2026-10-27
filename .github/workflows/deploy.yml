@@ -1,0 +1,106 @@
+name: Deploy
+
+on:
+  push:
+    branches: [dev, master]
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # No-ops until the AWS account/OIDC role is configured in repo vars.
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Resolve environment
+        id: env_name
+        run: |
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            echo "name=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push service images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          for app in api auth platform dispatcher worker; do
+            docker build -f docker/app.Dockerfile \
+              --build-arg APP=$app \
+              -t $REGISTRY/docbridge/$app:${{ github.sha }} \
+              -t $REGISTRY/docbridge/$app:latest .
+            docker push $REGISTRY/docbridge/$app:${{ github.sha }}
+          done
+
+      - name: Deploy stack
+        working-directory: infra
+        run: |
+          pnpm exec cdk deploy "DocBridge-${{ steps.env_name.outputs.name }}" \
+            --require-approval never \
+            -c imageTag=${{ github.sha }} \
+            --outputs-file outputs.json
+
+      # TDD 7.1: migrations run as one-off ECS tasks BEFORE the service rollout.
+      - name: Run database migrations
+        working-directory: infra
+        run: |
+          CLUSTER=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ClusterName' outputs.json)
+          SG=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ServiceSecurityGroup' outputs.json)
+          SUBNETS=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].PrivateSubnetIds' outputs.json)
+          NET="awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=DISABLED}"
+          for db in auth docbridge platform; do
+            TDEF=$(jq -r ".[\"DocBridge-${{ steps.env_name.outputs.name }}\"][\"MigrateTaskDef-$db\"]" outputs.json)
+            TASK=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE \
+              --task-definition "$TDEF" \
+              --network-configuration "$NET" \
+              --query 'tasks[0].taskArn' --output text)
+            aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+            CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
+              --query 'tasks[0].containers[0].exitCode' --output text)
+            if [ "$CODE" != "0" ]; then
+              echo "migration $db failed (exit $CODE)" >&2
+              exit 1
+            fi
+          done
+
+      - name: Roll out services
+        working-directory: infra
+        run: |
+          CLUSTER=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ClusterName' outputs.json)
+          for svc in api auth platform dispatcher worker; do
+            aws ecs update-service --cluster "$CLUSTER" --service "$svc" \
+              --force-new-deployment >/dev/null
+          done
+
+      - name: Publish web bundle
+        run: pnpm --filter @docbridge/web build
+      - name: Sync web bundle and invalidate CloudFront
+        working-directory: infra
+        run: |
+          BUCKET=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].WebBucketName' outputs.json)
+          DIST=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].DistributionId' outputs.json)
+          aws s3 sync ../apps/web/dist "s3://$BUCKET" --delete
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"

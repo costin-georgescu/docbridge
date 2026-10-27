@@ -6,3 +6,5 @@ coverage/
 !.env.example
 *.tsbuildinfo
 packages/db-*/src/generated/
+cdk.out
+cdk.context.json

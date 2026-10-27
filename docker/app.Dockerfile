@@ -23,3 +23,8 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 RUN pnpm db:generate
+
+# Production entrypoint; a compiled slim image is a later optimisation.
+# docker-compose overrides this with `pnpm --filter @docbridge/<app> dev`.
+ARG APP
+CMD pnpm --filter @docbridge/${APP} start

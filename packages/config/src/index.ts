@@ -22,3 +22,23 @@ export function loadConfig<T extends z.ZodTypeAny>(
   }
   return result.data;
 }
+
+/**
+ * Builds a Postgres URL from either DATABASE_URL (local dev) or the four
+ * DB_* parts injected in AWS (Secrets Manager can't template a full URL).
+ */
+export function databaseUrlFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (env.DATABASE_URL) return env.DATABASE_URL;
+  const { DB_HOST, DB_NAME, DB_USERNAME, DB_PASSWORD } = env;
+  const missing = ["DB_HOST", "DB_NAME", "DB_USERNAME", "DB_PASSWORD"].filter(
+    (k) => !env[k],
+  );
+  if (missing.length) {
+    throw new Error(
+      `Invalid environment configuration:\n${missing.map((k) => `${k}: required`).join("\n")}`,
+    );
+  }
+  return `postgresql://${encodeURIComponent(DB_USERNAME!)}:${encodeURIComponent(DB_PASSWORD!)}@${DB_HOST}:5432/${DB_NAME}`;
+}

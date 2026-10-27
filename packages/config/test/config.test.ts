@@ -24,3 +24,30 @@ describe("loadConfig", () => {
     ).toThrow(/NODE_ENV/);
   });
 });
+
+import { databaseUrlFromEnv } from "../src";
+
+describe("databaseUrlFromEnv", () => {
+  it("returns DATABASE_URL when set", () => {
+    expect(
+      databaseUrlFromEnv({ DATABASE_URL: "postgresql://u:p@h:5432/d" }),
+    ).toBe("postgresql://u:p@h:5432/d");
+  });
+
+  it("builds the URL from the DB_* parts", () => {
+    expect(
+      databaseUrlFromEnv({
+        DB_HOST: "rds.example.com",
+        DB_NAME: "auth",
+        DB_USERNAME: "auth_app",
+        DB_PASSWORD: "s3cret/with:chars",
+      }),
+    ).toBe(
+      "postgresql://auth_app:s3cret%2Fwith%3Achars@rds.example.com:5432/auth",
+    );
+  });
+
+  it("throws naming the missing parts", () => {
+    expect(() => databaseUrlFromEnv({})).toThrow(/DB_HOST/);
+  });
+});

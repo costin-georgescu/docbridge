@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "module": "CommonJS",
+    "ignoreDeprecations": "6.0",
+    "types": ["node", "jest"]
+  }
+}
