@@ -22,3 +22,4 @@ COPY infra/package.json infra/
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+RUN pnpm db:generate

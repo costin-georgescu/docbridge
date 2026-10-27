@@ -13,3 +13,14 @@ Postgres 5432, LocalStack 4566.
 To hit LocalStack from the host use `AWS_ENDPOINT_URL=http://localhost:4566`
 with `aws`/`awslocal`, e.g.
 `aws --endpoint-url http://localhost:4566 sqs list-queues`.
+
+## Database
+
+```sh
+docker compose up -d postgres   # just the database
+pnpm db:migrate                 # apply migrations to all three databases
+pnpm db:seed                    # seed platform + auth (idempotent)
+```
+
+Seeded logins (password `password123`): `admin@docbridge.local` (admin, all
+teams), `anna@docbridge.local`, `ben@docbridge.local`.

@@ -1,6 +1,6 @@
-CREATE ROLE auth_app LOGIN PASSWORD 'auth_app';
-CREATE ROLE docbridge_app LOGIN PASSWORD 'docbridge_app';
-CREATE ROLE platform_app LOGIN PASSWORD 'platform_app';
+CREATE ROLE auth_app LOGIN PASSWORD 'auth_app' CREATEDB;
+CREATE ROLE docbridge_app LOGIN PASSWORD 'docbridge_app' CREATEDB;
+CREATE ROLE platform_app LOGIN PASSWORD 'platform_app' CREATEDB;
 
 CREATE DATABASE auth OWNER auth_app;
 CREATE DATABASE docbridge OWNER docbridge_app;

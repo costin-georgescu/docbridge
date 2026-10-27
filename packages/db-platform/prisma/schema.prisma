@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Team {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  binders   Binder[]
+
+  @@map("teams")
+}
+
+model Binder {
+  id      String   @id @default(uuid(7)) @db.Uuid
+  teamId  String   @map("team_id") @db.Uuid
+  name    String
+  team    Team     @relation(fields: [teamId], references: [id])
+  folders Folder[]
+
+  @@unique([teamId, name])
+  @@map("binders")
+}
+
+model Folder {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  binderId       String   @map("binder_id") @db.Uuid
+  parentFolderId String?  @map("parent_folder_id") @db.Uuid
+  name           String
+  binder         Binder   @relation(fields: [binderId], references: [id])
+  parent         Folder?  @relation("FolderHierarchy", fields: [parentFolderId], references: [id])
+  children       Folder[] @relation("FolderHierarchy")
+  documents      Document[]
+
+  @@unique([binderId, parentFolderId, name])
+  @@index([binderId])
+  @@map("folders")
+}
+
+model Document {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  folderId  String            @map("folder_id") @db.Uuid
+  name      String
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  folder    Folder            @relation(fields: [folderId], references: [id])
+  versions  DocumentVersion[]
+
+  @@unique([folderId, name])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  documentId        String   @map("document_id") @db.Uuid
+  versionNo         Int      @map("version_no")
+  storageKey        String   @unique @map("storage_key")
+  sizeBytes         BigInt   @map("size_bytes")
+  checksumCrc32c    String   @map("checksum_crc32c")
+  contentType       String   @map("content_type")
+  submittedByUserId String   @map("submitted_by_user_id") @db.Uuid
+  deliveryTaskId    String   @unique @map("delivery_task_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  document          Document @relation(fields: [documentId], references: [id])
+
+  @@unique([documentId, versionNo])
+  @@map("document_versions")
+}

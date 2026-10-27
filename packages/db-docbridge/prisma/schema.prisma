@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StagedFileStatus {
+  pending_upload
+  staged
+
+  @@map("staged_file_status")
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  completed
+  failed
+
+  @@map("task_status")
+}
+
+enum TaskAttemptOutcome {
+  succeeded
+  failed_retryable
+  failed_permanent
+  timed_out
+
+  @@map("task_attempt_outcome")
+}
+
+model StagedFile {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  ownerUserId       String           @map("owner_user_id") @db.Uuid
+  jobId             String?          @map("job_id") @db.Uuid
+  fileName          String           @map("file_name")
+  contentType       String           @map("content_type")
+  sizeBytes         BigInt           @map("size_bytes")
+  checksumCrc32c    String           @map("checksum_crc32c")
+  storageKey        String           @unique @map("storage_key")
+  multipartUploadId String?          @map("multipart_upload_id")
+  status            StagedFileStatus
+  stagedAt          DateTime?        @map("staged_at") @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  job               Job?             @relation(fields: [jobId], references: [id])
+  tasks             Task[]
+
+  @@index([ownerUserId, createdAt])
+  @@map("staged_files")
+}
+
+model Job {
+  id                    String       @id @default(uuid(7)) @db.Uuid
+  submitterUserId       String       @map("submitter_user_id") @db.Uuid
+  submitterDisplayName  String       @map("submitter_display_name")
+  submittedAt           DateTime     @map("submitted_at") @db.Timestamptz(6)
+  completedAt           DateTime?    @map("completed_at") @db.Timestamptz(6)
+  retentionTaggedAt     DateTime?    @map("retention_tagged_at") @db.Timestamptz(6)
+  filesCount            Int          @map("files_count")
+  tasksCount            Int          @map("tasks_count")
+  stagedFiles           StagedFile[]
+  teams                 JobTeam[]
+  tasks                 Task[]
+
+  @@index([submittedAt(sort: Desc), id(sort: Desc)])
+  @@map("jobs")
+}
+
+model JobTeam {
+  jobId  String @map("job_id") @db.Uuid
+  teamId String @map("team_id") @db.Uuid
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, teamId])
+  @@index([teamId, jobId])
+  @@map("job_teams")
+}
+
+model Task {
+  id                  String        @id @default(uuid(7)) @db.Uuid
+  jobId               String        @map("job_id") @db.Uuid
+  stagedFileId        String        @map("staged_file_id") @db.Uuid
+  destinationFolderId String        @map("destination_folder_id") @db.Uuid
+  destinationTeamId   String        @map("destination_team_id") @db.Uuid
+  destinationPath     String        @map("destination_path")
+  status              TaskStatus
+  dispatchedAt        DateTime?     @map("dispatched_at") @db.Timestamptz(6)
+  attemptCount        Int           @default(0) @map("attempt_count")
+  startedAt           DateTime?     @map("started_at") @db.Timestamptz(6)
+  finishedAt          DateTime?     @map("finished_at") @db.Timestamptz(6)
+  lastErrorCode       String?       @map("last_error_code")
+  lastErrorMessage    String?       @map("last_error_message")
+  platformDocumentId  String?       @map("platform_document_id") @db.Uuid
+  platformVersionNo   Int?          @map("platform_version_no")
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  job                 Job           @relation(fields: [jobId], references: [id])
+  stagedFile          StagedFile    @relation(fields: [stagedFileId], references: [id])
+  attempts            TaskAttempt[]
+
+  @@unique([jobId, stagedFileId, destinationFolderId])
+  @@index([jobId, status])
+  @@map("tasks")
+}
+
+model TaskAttempt {
+  id           BigInt             @id @default(autoincrement())
+  taskId       String             @map("task_id") @db.Uuid
+  attemptNo    Int                @map("attempt_no")
+  startedAt    DateTime           @map("started_at") @db.Timestamptz(6)
+  finishedAt   DateTime?          @map("finished_at") @db.Timestamptz(6)
+  outcome      TaskAttemptOutcome?
+  errorCode    String?            @map("error_code")
+  errorMessage String?            @map("error_message")
+  workerId     String?            @map("worker_id")
+  task         Task               @relation(fields: [taskId], references: [id])
+
+  @@unique([taskId, attemptNo])
+  @@map("task_attempts")
+}
