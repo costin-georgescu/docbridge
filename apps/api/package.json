@@ -1,0 +1,26 @@
+{
+  "name": "@docbridge/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@docbridge/contracts": "workspace:*",
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "@nestjs/platform-express": "12.2.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "@nestjs/testing": "12.2.0",
+    "@jest/globals": "30.5.2",
+    "supertest": "7.3.1",
+    "@types/supertest": "7.2.1",
+    "ts-jest": "29.4.15"
+  }
+}

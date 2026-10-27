@@ -1,0 +1,19 @@
+{
+  "files": [],
+  "references": [
+    { "path": "apps/api" },
+    { "path": "apps/auth" },
+    { "path": "apps/platform" },
+    { "path": "apps/dispatcher" },
+    { "path": "apps/worker" },
+    { "path": "apps/web" },
+    { "path": "packages/contracts" },
+    { "path": "packages/auth-core" },
+    { "path": "packages/config" },
+    { "path": "packages/storage" },
+    { "path": "packages/db-auth" },
+    { "path": "packages/db-docbridge" },
+    { "path": "packages/db-platform" },
+    { "path": "infra" }
+  ]
+}
