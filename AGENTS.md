@@ -10,6 +10,10 @@ Never edit `docs/tdd.md`, `docs/blueprint.md` or `docs/adr/*.md` unless the user
 - `dev` — all development.
 - `feat/flow-N-<name>` — one branch per TDD milestone (Flow 0–4, cross-cutting), branched from `dev`, merged back when done.
 
+## Commits
+
+Never commit or push. Leave every change uncommitted in the working tree; the user reviews and commits manually. Report what changed and suggest a commit message.
+
 ## Current constraints
 
 - No AWS credentials yet: everything runs against LocalStack via docker compose. CDK can be written and `cdk synth`'d but not deployed.
