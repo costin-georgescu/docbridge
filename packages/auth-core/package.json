@@ -4,7 +4,23 @@
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "dependencies": {
+    "@docbridge/contracts": "workspace:*",
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "@types/express": "5.0.6",
+    "jose": "6.2.12",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.7"
+  },
   "devDependencies": {
+    "@jest/globals": "30.5.2",
+    "@nestjs/platform-express": "12.2.0",
+    "@nestjs/testing": "12.2.0",
+    "@types/supertest": "7.2.1",
+    "supertest": "7.3.1",
+    "ts-jest": "29.4.15",
     "typescript": "6.0.3"
   }
 }

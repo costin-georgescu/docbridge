@@ -21,6 +21,17 @@ export default {
       transform: { "^.+\\.tsx?$": tsTransform },
     },
     {
+      displayName: "auth-core",
+      rootDir: "packages/auth-core",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+      moduleNameMapper: {
+        "^@docbridge/contracts$":
+          "<rootDir>/../../packages/contracts/src/index.ts",
+      },
+    },
+    {
       displayName: "infra",
       rootDir: "infra",
       testEnvironment: "node",
