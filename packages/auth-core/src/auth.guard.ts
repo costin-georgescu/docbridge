@@ -52,6 +52,8 @@ export class AuthGuard implements CanActivate {
     claims: TokenClaims,
   ): void {
     switch (requirement.kind) {
+      case "any":
+        return;
       case "user":
         if (!("teams" in claims)) {
           throw new AuthError(403, "forbidden", "User token required");

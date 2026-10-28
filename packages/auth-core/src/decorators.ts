@@ -8,6 +8,13 @@ import {
 import { AuthGuard, AuthenticatedRequest } from "./auth.guard";
 import { AUTH_REQUIREMENT } from "./requirement";
 
+export function RequireAuthenticated() {
+  return applyDecorators(
+    SetMetadata(AUTH_REQUIREMENT, { kind: "any" }),
+    UseGuards(AuthGuard),
+  );
+}
+
 export function RequireUser() {
   return applyDecorators(
     SetMetadata(AUTH_REQUIREMENT, { kind: "user" }),

@@ -64,5 +64,22 @@ export default {
       },
       setupFiles: ["<rootDir>/test/setup.ts"],
     },
+    {
+      displayName: "platform",
+      rootDir: "apps/platform",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+      moduleNameMapper: {
+        "^@docbridge/contracts$":
+          "<rootDir>/../../packages/contracts/src/index.ts",
+        "^@docbridge/config$": "<rootDir>/../../packages/config/src/index.ts",
+        "^@docbridge/auth-core$":
+          "<rootDir>/../../packages/auth-core/src/index.ts",
+        "^@docbridge/db-platform$":
+          "<rootDir>/../../packages/db-platform/dist/index.js",
+      },
+      setupFiles: ["<rootDir>/test/setup.ts"],
+    },
   ],
 };

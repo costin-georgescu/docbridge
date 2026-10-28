@@ -11,6 +11,12 @@
     },
     {
       "path": "../../packages/config"
+    },
+    {
+      "path": "../../packages/auth-core"
+    },
+    {
+      "path": "../../packages/db-platform"
     }
   ]
 }

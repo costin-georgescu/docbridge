@@ -7,6 +7,7 @@ export { AuthGuard, AuthenticatedRequest } from "./auth.guard";
 export {
   Claims,
   RequireAdmin,
+  RequireAuthenticated,
   RequireService,
   RequireUser,
 } from "./decorators";

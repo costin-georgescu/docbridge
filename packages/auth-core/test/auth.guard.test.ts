@@ -4,7 +4,12 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AuthCoreModule } from "../src/auth-core.module";
 import { Claims } from "../src/decorators";
-import { RequireAdmin, RequireService, RequireUser } from "../src/decorators";
+import {
+  RequireAdmin,
+  RequireAuthenticated,
+  RequireService,
+  RequireUser,
+} from "../src/decorators";
 import {
   fakeFetch,
   makeKeypair,
@@ -34,6 +39,12 @@ class TestController {
   @Get("/service")
   @RequireService("documents:write")
   service(@Claims() claims: TokenClaims) {
+    return claims;
+  }
+
+  @Get("/authenticated")
+  @RequireAuthenticated()
+  authenticated(@Claims() claims: TokenClaims) {
     return claims;
   }
 
@@ -173,6 +184,31 @@ describe("AuthGuard", () => {
       code: "forbidden",
       message: "Insufficient scope",
     });
+  });
+
+  it("allows a user token on an authenticated route", async () => {
+    const token = await signToken(kp.privateKey, "k1", userPayload());
+    const res = await request(app.getHttpServer())
+      .get("/authenticated")
+      .set(bearer(token))
+      .expect(200);
+    expect(res.body.teams).toBeDefined();
+  });
+
+  it("allows a service token on an authenticated route", async () => {
+    const token = await signToken(kp.privateKey, "k1", servicePayload());
+    const res = await request(app.getHttpServer())
+      .get("/authenticated")
+      .set(bearer(token))
+      .expect(200);
+    expect(res.body.sub).toBe("service:worker");
+  });
+
+  it("rejects a missing token on an authenticated route with 401", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/authenticated")
+      .expect(401);
+    expect(res.body.error.code).toBe("unauthorized");
   });
 
   it("fetched the JWKS once at startup", () => {
