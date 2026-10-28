@@ -18,7 +18,8 @@
     "db:generate": "pnpm -r --filter \"./packages/db-*\" run generate",
     "db:migrate": "node --env-file=.env scripts/db.mjs migrate:deploy",
     "db:migrate:dev": "node --env-file=.env scripts/db.mjs migrate:dev",
-    "db:seed": "node --env-file=.env --import tsx scripts/seed.ts"
+    "db:seed": "node --env-file=.env --import tsx scripts/seed.ts",
+    "auth:keygen": "node scripts/gen-signing-key.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

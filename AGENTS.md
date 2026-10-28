@@ -17,3 +17,13 @@ Never commit or push. Leave every change uncommitted in the working tree; the us
 ## Current constraints
 
 - No AWS credentials yet: everything runs against LocalStack via docker compose. CDK can be written and `cdk synth`'d but not deployed.
+
+## Verification
+
+- `pnpm install`
+- `pnpm db:generate`
+- `pnpm typecheck`
+- `pnpm lint`
+- `pnpm test` — runs all Jest projects
+- Auth e2e needs a real Postgres (`docker compose up -d postgres`, then `pnpm db:migrate`) and runs only when `AUTH_TEST_DATABASE_URL` is set, e.g. `AUTH_TEST_DATABASE_URL=postgresql://auth_app:auth_app@localhost:5432/auth pnpm test --selectProjects auth`.
+- `pnpm auth:keygen` prints a `JWT_SIGNING_KEY='...'` line to append to `.env`.

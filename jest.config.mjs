@@ -38,5 +38,20 @@ export default {
           "<rootDir>/../../packages/contracts/src/index.ts",
       },
     },
+    {
+      displayName: "auth",
+      rootDir: "apps/auth",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+      moduleNameMapper: {
+        "^@docbridge/contracts$":
+          "<rootDir>/../../packages/contracts/src/index.ts",
+        "^@docbridge/config$": "<rootDir>/../../packages/config/src/index.ts",
+        "^@docbridge/db-auth$":
+          "<rootDir>/../../packages/db-auth/dist/index.js",
+      },
+      setupFiles: ["<rootDir>/test/setup.ts"],
+    },
   ],
 };
