@@ -65,6 +65,18 @@ export default {
       setupFiles: ["<rootDir>/test/setup.ts"],
     },
     {
+      displayName: "web",
+      rootDir: "apps/web",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts", "**/*.test.tsx"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+      moduleNameMapper: {
+        "^@docbridge/contracts$":
+          "<rootDir>/../../packages/contracts/src/index.ts",
+      },
+      globals: { __API_BASE__: "" },
+    },
+    {
       displayName: "platform",
       rootDir: "apps/platform",
       testEnvironment: "node",

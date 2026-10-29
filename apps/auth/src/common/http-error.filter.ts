@@ -21,9 +21,21 @@ export class HttpErrorFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const body = exception.getResponse() as
-        string | { message?: string | string[]; error?: string };
+        | string
+        | {
+            message?: string | string[];
+            error?: string | { code?: unknown; message?: unknown };
+          };
+      if (
+        typeof body === "object" &&
+        body?.error &&
+        typeof body.error === "object"
+      ) {
+        res.status(status).json({ error: body.error });
+        return;
+      }
       const name =
-        typeof body === "object" && body?.error
+        typeof body === "object" && typeof body?.error === "string"
           ? body.error
           : exception.name.replace(/Exception$/, "");
       const message =
@@ -45,15 +57,13 @@ export class HttpErrorFilter implements ExceptionFilter {
       "Unhandled exception",
       exception instanceof Error ? exception.stack : String(exception),
     );
-    res
-      .status(500)
-      .json({
-        error: {
-          code: "internal_error",
-          message: "Internal error",
-          details: {},
-        },
-      });
+    res.status(500).json({
+      error: {
+        code: "internal_error",
+        message: "Internal error",
+        details: {},
+      },
+    });
   }
 
   private static snakeCase(name: string): string {

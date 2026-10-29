@@ -173,6 +173,76 @@ describe("ALB rules", () => {
     expect(values).not.toContain("/auth/service-token");
     expect(values).not.toContain("/auth/*");
   });
+
+  it("the platform target group is reachable only through the GET /tree rule", () => {
+    const tgLogicalId = Object.keys(
+      template.findResources("AWS::ElasticLoadBalancingV2::TargetGroup"),
+    ).find(
+      (id) =>
+        id.toLowerCase().includes("platform") &&
+        !id.toLowerCase().includes("api") &&
+        !id.toLowerCase().includes("auth"),
+    );
+    expect(tgLogicalId).toBeDefined();
+    const platformRules = Object.values(
+      template.findResources("AWS::ElasticLoadBalancingV2::ListenerRule"),
+    ).filter((r) =>
+      (
+        r as {
+          Properties: { Actions: { TargetGroupArn?: { Ref: string } }[] };
+        }
+      ).Properties.Actions.some(
+        (a) => a.TargetGroupArn?.Ref === tgLogicalId,
+      ),
+    );
+    expect(platformRules).toHaveLength(1);
+    const conditions = (
+      platformRules[0] as {
+        Properties: {
+          Conditions: {
+            Field: string;
+            PathPatternConfig?: { Values: string[] };
+            HttpRequestMethodConfig?: { Values: string[] };
+          }[];
+        };
+      }
+    ).Properties.Conditions;
+    const pathCond = conditions.find((c) => c.Field === "path-pattern");
+    expect(pathCond?.PathPatternConfig?.Values).toEqual(["/tree"]);
+    const methodCond = conditions.find(
+      (c) => c.Field === "http-request-method",
+    );
+    expect(methodCond?.HttpRequestMethodConfig?.Values).toEqual(["GET"]);
+    const values = pathValues();
+    expect(
+      values.filter((v) => /^\/(tree\/|folders|admin)/.test(v)),
+    ).toHaveLength(0);
+  });
+
+  it("unmatched paths get a fixed 404 from the listener", () => {
+    const listeners = Object.values(
+      template.findResources("AWS::ElasticLoadBalancingV2::Listener"),
+    ).map(
+      (r) =>
+        (
+          r as {
+            Properties: {
+              Port: number;
+              DefaultActions: {
+                Type: string;
+                FixedResponseConfig?: { StatusCode: string };
+              }[];
+            };
+          }
+        ).Properties,
+    );
+    const https = listeners.find((l) => l.Port === 443);
+    expect(https).toBeDefined();
+    expect(https?.DefaultActions[0].Type).toBe("fixed-response");
+    expect(https?.DefaultActions[0].FixedResponseConfig?.StatusCode).toBe(
+      "404",
+    );
+  });
 });
 
 describe("task roles", () => {

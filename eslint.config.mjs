@@ -20,5 +20,11 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    languageOptions: {
+      globals: { ...globals.browser, __API_BASE__: "readonly" },
+    },
+  },
   prettier,
 );

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "types": ["node", "jest"]
+  }
+}

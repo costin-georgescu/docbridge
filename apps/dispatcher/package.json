@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "tsx src/main.ts",
+    "start": "tsx --tsconfig ../../tsconfig.base.json src/main.ts",
     "build": "tsc -b",
-    "dev": "tsx watch src/main.ts"
+    "dev": "tsx watch --tsconfig ../../tsconfig.base.json src/main.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",

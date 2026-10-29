@@ -108,6 +108,10 @@ services:
       dockerfile: docker/app.Dockerfile
     env_file: .env
     volumes: *src-volumes
+    environment:
+      AUTH_URL: http://auth:3001
+      PLATFORM_URL: http://platform:3002
+      API_URL: http://api:3000
     command: pnpm --filter @docbridge/web dev
     ports:
       - "5173:5173"
