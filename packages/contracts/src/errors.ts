@@ -10,6 +10,7 @@ export const ErrorCode = z.enum([
   "validation_error",
   "checksum_mismatch",
   "not_multipart",
+  "upload_not_found",
   "folder_not_authorized",
   "folder_not_found",
   "file_not_staged",

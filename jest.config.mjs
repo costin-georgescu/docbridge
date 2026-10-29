@@ -32,6 +32,13 @@ export default {
       },
     },
     {
+      displayName: "storage",
+      rootDir: "packages/storage",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+    },
+    {
       displayName: "infra",
       rootDir: "infra",
       testEnvironment: "node",
@@ -47,7 +54,15 @@ export default {
       moduleNameMapper: {
         "^@docbridge/contracts$":
           "<rootDir>/../../packages/contracts/src/index.ts",
+        "^@docbridge/config$": "<rootDir>/../../packages/config/src/index.ts",
+        "^@docbridge/auth-core$":
+          "<rootDir>/../../packages/auth-core/src/index.ts",
+        "^@docbridge/db-docbridge$":
+          "<rootDir>/../../packages/db-docbridge/dist/index.js",
+        "^@docbridge/storage$":
+          "<rootDir>/../../packages/storage/src/index.ts",
       },
+      setupFiles: ["<rootDir>/test/setup.ts"],
     },
     {
       displayName: "auth",

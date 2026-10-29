@@ -8,6 +8,16 @@ for bucket in docbridge-staging docbridge-platform; do
     awslocal s3 mb "s3://$bucket"
 done
 
+# Browser uploads (presigned PUT/UploadPart) hit the staging bucket directly.
+awslocal s3api put-bucket-cors --bucket docbridge-staging --cors-configuration '{
+  "CORSRules": [{
+    "AllowedOrigins": ["http://localhost:5173"],
+    "AllowedMethods": ["PUT", "GET"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"]
+  }]
+}'
+
 awslocal sqs create-queue --queue-name docbridge-upload-events-dlq \
   --attributes MessageRetentionPeriod=1209600 >/dev/null
 awslocal sqs create-queue --queue-name docbridge-upload-events --attributes '{
