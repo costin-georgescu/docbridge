@@ -11,6 +11,7 @@ import { Test } from "@nestjs/testing";
 import { AUDIENCE, ISSUER, JwksClient } from "@docbridge/auth-core";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.setup";
+import { PlatformClient } from "../src/platform/platform-client";
 
 export interface TestKeypair {
   privateKey: CryptoKey;
@@ -77,9 +78,12 @@ export function fakeFetch(jwksProvider: () => JWK[]) {
   return { fetch: impl, calls };
 }
 
-export async function bootApp(kp: TestKeypair): Promise<INestApplication> {
+export async function bootApp(
+  kp: TestKeypair,
+  overrides: { platformClient?: PlatformClient } = {},
+): Promise<INestApplication> {
   const fake = fakeFetch(() => [kp.publicJwk]);
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  let builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(JwksClient)
     .useValue(
       new JwksClient({
@@ -87,8 +91,13 @@ export async function bootApp(kp: TestKeypair): Promise<INestApplication> {
         fetch: fake.fetch,
         cooldownMs: 0,
       }),
-    )
-    .compile();
+    );
+  if (overrides.platformClient) {
+    builder = builder
+      .overrideProvider(PlatformClient)
+      .useValue(overrides.platformClient);
+  }
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication();
   configureApp(app);
   await app.init();

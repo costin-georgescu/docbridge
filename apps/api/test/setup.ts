@@ -4,6 +4,7 @@ process.env.DATABASE_URL ??=
   process.env.API_TEST_DATABASE_URL ??
   "postgresql://docbridge_app:docbridge_app@localhost:5432/docbridge";
 process.env.AUTH_INTERNAL_URL ??= "http://auth.test";
+process.env.PLATFORM_INTERNAL_URL ??= "http://platform.test";
 process.env.STAGING_BUCKET ??= "docbridge-staging";
 process.env.AWS_ENDPOINT_URL ??= "http://localhost:4566";
 process.env.AWS_ACCESS_KEY_ID ??= "test";
