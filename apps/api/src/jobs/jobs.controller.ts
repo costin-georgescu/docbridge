@@ -1,9 +1,12 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Inject,
+  Param,
   Post,
+  Query,
   Req,
 } from "@nestjs/common";
 import {
@@ -14,6 +17,9 @@ import {
 import {
   CreateJobRequest,
   CreateJobResponse,
+  JobDetailResponse,
+  JobListQuery,
+  JobListResponse,
   type UserClaims,
 } from "@docbridge/contracts";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -34,6 +40,24 @@ export class JobsController {
     @Body(new ZodValidationPipe(CreateJobRequest)) body: CreateJobRequest,
   ): Promise<CreateJobResponse> {
     return this.jobs.createJob(claims, bearerToken(req), body);
+  }
+
+  @Get()
+  @RequireUser()
+  listJobs(
+    @Claims() claims: UserClaims,
+    @Query(new ZodValidationPipe(JobListQuery)) query: JobListQuery,
+  ): Promise<JobListResponse> {
+    return this.jobs.listJobs(claims, query);
+  }
+
+  @Get(":id")
+  @RequireUser()
+  getJob(
+    @Claims() claims: UserClaims,
+    @Param("id") id: string,
+  ): Promise<JobDetailResponse> {
+    return this.jobs.getJob(claims, id);
   }
 }
 
