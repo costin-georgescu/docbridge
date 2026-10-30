@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { fileIdFromStagedKey, UploadEventMessage } from "../src";
+import { fileIdFromStagedKey, TaskMessage, UploadEventMessage } from "../src";
 
 const OWNER = "11111111-2222-3333-4444-555555555555";
 const FILE = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -64,5 +64,27 @@ describe("UploadEventMessage", () => {
     expect(
       UploadEventMessage.safeParse({ Records: [{ foo: 1 }] }).success,
     ).toBe(false);
+  });
+});
+
+describe("TaskMessage", () => {
+  const TASK = "11111111-1111-4111-8111-111111111111";
+  const JOB = "22222222-2222-4222-8222-222222222222";
+
+  it("parses a task message", () => {
+    const parsed = TaskMessage.safeParse({ v: 1, taskId: TASK, jobId: JOB });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects wrong versions and non-uuids", () => {
+    expect(
+      TaskMessage.safeParse({ v: 2, taskId: TASK, jobId: JOB }).success,
+    ).toBe(false);
+    expect(
+      TaskMessage.safeParse({ v: 1, taskId: "nope", jobId: JOB }).success,
+    ).toBe(false);
+    expect(TaskMessage.safeParse({ taskId: TASK, jobId: JOB }).success).toBe(
+      false,
+    );
   });
 });

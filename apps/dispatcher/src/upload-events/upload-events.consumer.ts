@@ -12,7 +12,7 @@ import {
 } from "@aws-sdk/client-sqs";
 import { fileIdFromStagedKey, UploadEventMessage } from "@docbridge/contracts";
 import { config } from "../config";
-import { SqsService } from "./sqs.service";
+import { SqsService } from "../sqs/sqs.service";
 import { StagingConfirmer } from "./staging-confirmer";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -52,7 +52,7 @@ export class UploadEventsConsumer
   async pollOnce(signal?: AbortSignal): Promise<void> {
     const { Messages } = await this.sqsService.sqs.send(
       new ReceiveMessageCommand({
-        QueueUrl: this.sqsService.queueUrl,
+        QueueUrl: this.sqsService.uploadEventsQueueUrl,
         MaxNumberOfMessages: 10,
         WaitTimeSeconds: 20,
       }),
@@ -63,7 +63,7 @@ export class UploadEventsConsumer
         if (await this.handleMessage(msg)) {
           await this.sqsService.sqs.send(
             new DeleteMessageCommand({
-              QueueUrl: this.sqsService.queueUrl,
+              QueueUrl: this.sqsService.uploadEventsQueueUrl,
               ReceiptHandle: msg.ReceiptHandle,
             }),
           );

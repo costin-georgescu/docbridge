@@ -6,6 +6,8 @@ process.env.DATABASE_URL ??=
 process.env.STAGING_BUCKET ??= "docbridge-staging";
 process.env.UPLOAD_EVENTS_QUEUE_URL ??=
   "http://localhost:4566/000000000000/docbridge-upload-events-test";
+process.env.TASKS_QUEUE_URL ??=
+  "http://localhost:4566/000000000000/docbridge-tasks-test";
 process.env.AWS_ENDPOINT_URL ??= "http://localhost:4566";
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";

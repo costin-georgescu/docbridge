@@ -5,6 +5,7 @@ import {
   Logger,
   OnApplicationBootstrap,
 } from "@nestjs/common";
+import { sleep } from "../common/sleep";
 import { PrismaService } from "../prisma/prisma.service";
 import { ConfirmOutcome, StagingConfirmer } from "./staging-confirmer";
 
@@ -13,17 +14,6 @@ const SWEEP_INTERVAL_MS = 60_000;
 const SWEEP_MIN_AGE_MS = 60_000;
 const SWEEP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SWEEP_CONCURRENCY = 10;
-
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    const timer = setTimeout(done, ms);
-    function done() {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", done);
-      resolve();
-    }
-    signal.addEventListener("abort", done, { once: true });
-  });
 
 /** Covers S3 events that never arrived: pending_upload rows 60s–24h old. */
 @Injectable()

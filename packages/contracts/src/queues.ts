@@ -29,6 +29,15 @@ const S3EventNotification = z
 export const UploadEventMessage = z.union([S3TestEvent, S3EventNotification]);
 export type UploadEventMessage = z.infer<typeof UploadEventMessage>;
 
+// The worker loads everything else from the database, so a stale message
+// can never carry stale data.
+export const TaskMessage = z.object({
+  v: z.literal(1),
+  taskId: z.uuid(),
+  jobId: z.uuid(),
+});
+export type TaskMessage = z.infer<typeof TaskMessage>;
+
 const STAGED_KEY =
   /^staged\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
 
