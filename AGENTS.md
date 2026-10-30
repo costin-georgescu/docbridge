@@ -28,3 +28,4 @@ Never commit or push. Leave every change uncommitted in the working tree; the us
 - Auth e2e needs a real Postgres (`docker compose up -d postgres`, then `pnpm db:migrate`) and runs only when `AUTH_TEST_DATABASE_URL` is set, e.g. `AUTH_TEST_DATABASE_URL=postgresql://auth_app:auth_app@localhost:5432/auth pnpm test --selectProjects auth`.
 - `pnpm auth:keygen` prints a `JWT_SIGNING_KEY='...'` line to append to `.env`.
 - Api e2e needs Postgres + LocalStack (`docker compose up -d postgres localstack`, then `pnpm db:migrate`) and runs only when `API_TEST_DATABASE_URL` is set, e.g. `API_TEST_DATABASE_URL=postgresql://docbridge_app:docbridge_app@localhost:5432/docbridge pnpm test --selectProjects api`.
+- Dispatcher e2e needs Postgres + LocalStack (same setup as api) and runs only when `DISPATCHER_TEST_DATABASE_URL` is set, e.g. `DISPATCHER_TEST_DATABASE_URL=postgresql://docbridge_app:docbridge_app@localhost:5432/docbridge pnpm test --selectProjects dispatcher`.

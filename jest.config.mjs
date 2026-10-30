@@ -59,8 +59,23 @@ export default {
           "<rootDir>/../../packages/auth-core/src/index.ts",
         "^@docbridge/db-docbridge$":
           "<rootDir>/../../packages/db-docbridge/dist/index.js",
-        "^@docbridge/storage$":
-          "<rootDir>/../../packages/storage/src/index.ts",
+        "^@docbridge/storage$": "<rootDir>/../../packages/storage/src/index.ts",
+      },
+      setupFiles: ["<rootDir>/test/setup.ts"],
+    },
+    {
+      displayName: "dispatcher",
+      rootDir: "apps/dispatcher",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+      moduleNameMapper: {
+        "^@docbridge/contracts$":
+          "<rootDir>/../../packages/contracts/src/index.ts",
+        "^@docbridge/config$": "<rootDir>/../../packages/config/src/index.ts",
+        "^@docbridge/db-docbridge$":
+          "<rootDir>/../../packages/db-docbridge/dist/index.js",
+        "^@docbridge/storage$": "<rootDir>/../../packages/storage/src/index.ts",
       },
       setupFiles: ["<rootDir>/test/setup.ts"],
     },
