@@ -6,6 +6,7 @@ import {
   CreateJobRequest,
   CreateJobResponse,
   JobDetailResponse,
+  JobFileDownloadResponse,
   JobListResponse,
   JobStatus,
 } from "@docbridge/contracts";
@@ -29,6 +30,15 @@ export function listJobs(cursor?: string): Promise<JobListResponse> {
 export function fetchJob(jobId: string): Promise<JobDetailResponse> {
   return session.authFetch<JobDetailResponse>(
     `/api/jobs/${encodeURIComponent(jobId)}`,
+  );
+}
+
+export function requestFileDownload(
+  jobId: string,
+  fileId: string,
+): Promise<JobFileDownloadResponse> {
+  return session.authFetch<JobFileDownloadResponse>(
+    `/api/jobs/${encodeURIComponent(jobId)}/files/${encodeURIComponent(fileId)}/download`,
   );
 }
 

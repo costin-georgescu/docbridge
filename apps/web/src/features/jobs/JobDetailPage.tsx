@@ -2,6 +2,7 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import { ApiError } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
 import { useJob } from "./api";
+import { JobFileList } from "./JobFileList";
 import { JobStatusBadge } from "./JobStatusBadge";
 import { TaskTable } from "./TaskTable";
 
@@ -52,6 +53,7 @@ export function JobDetailPage() {
           {retrying > 0 && ` · ${retrying} retrying`}
         </p>
       </div>
+      <JobFileList jobId={data.id} files={data.files} />
       <TaskTable files={data.files} tasks={data.tasks} />
       <p className="text-sm">
         <Link to="/jobs" className="text-blue-600 hover:underline">
