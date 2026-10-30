@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
 import { session } from "./auth/session";
+import { uploadManager } from "./features/uploads/instance";
 import { router } from "./router";
 import "./index.css";
 
@@ -14,6 +15,7 @@ const queryClient = new QueryClient({
 session.subscribe(() => {
   if (session.getState().status === "anonymous") {
     queryClient.clear();
+    uploadManager.reset();
   }
 });
 void session.restore();

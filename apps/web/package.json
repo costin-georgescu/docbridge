@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-crypto/crc32c": "5.2.0",
     "@base-ui-components/react": "1.0.0-rc.0",
     "@docbridge/contracts": "workspace:*",
     "@tanstack/react-query": "5.104.5",

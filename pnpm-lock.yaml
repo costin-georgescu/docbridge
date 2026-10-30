@@ -444,6 +444,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@aws-crypto/crc32c':
+        specifier: 5.2.0
+        version: 5.2.0
       '@base-ui-components/react':
         specifier: 1.0.0-rc.0
         version: 1.0.0-rc.0(@types/react@19.3.0)(react-dom@19.1.10(react@19.1.10))(react@19.1.10)

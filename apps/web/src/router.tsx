@@ -16,6 +16,7 @@ import { Button } from "./components/Button";
 import { AdminPage } from "./features/admin/AdminPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { TreePage } from "./features/tree/TreePage";
+import { UploadPage } from "./features/uploads/UploadPage";
 
 function Layout() {
   const { status, claims } = useSession();
@@ -42,6 +43,13 @@ function Layout() {
                   activeProps={{ className: "font-medium text-blue-600" }}
                 >
                   Destinations
+                </Link>
+                <Link
+                  to="/upload"
+                  className="text-gray-900 hover:text-blue-600"
+                  activeProps={{ className: "font-medium text-blue-600" }}
+                >
+                  Upload
                 </Link>
                 {claims?.admin && (
                   <Link
@@ -105,6 +113,13 @@ const treeRoute = createRoute({
   component: TreePage,
 });
 
+const uploadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/upload",
+  beforeLoad: ({ location }) => requireAuthentication(location.href),
+  component: UploadPage,
+});
+
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
@@ -117,7 +132,12 @@ const adminRoute = createRoute({
   component: AdminPage,
 });
 
-const routeTree = rootRoute.addChildren([loginRoute, treeRoute, adminRoute]);
+const routeTree = rootRoute.addChildren([
+  loginRoute,
+  treeRoute,
+  uploadRoute,
+  adminRoute,
+]);
 
 export const router = createRouter({ routeTree });
 
