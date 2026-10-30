@@ -104,6 +104,8 @@ services:
     command: pnpm --filter @docbridge/worker dev
     environment:
       DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge
+      AUTH_INTERNAL_URL: http://auth:3001
+      PLATFORM_INTERNAL_URL: http://platform:3002
 
   web:
     build:

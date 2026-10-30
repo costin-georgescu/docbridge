@@ -80,6 +80,22 @@ export default {
       setupFiles: ["<rootDir>/test/setup.ts"],
     },
     {
+      displayName: "worker",
+      rootDir: "apps/worker",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+      moduleNameMapper: {
+        "^@docbridge/contracts$":
+          "<rootDir>/../../packages/contracts/src/index.ts",
+        "^@docbridge/config$": "<rootDir>/../../packages/config/src/index.ts",
+        "^@docbridge/db-docbridge$":
+          "<rootDir>/../../packages/db-docbridge/dist/index.js",
+        "^@docbridge/storage$": "<rootDir>/../../packages/storage/src/index.ts",
+      },
+      setupFiles: ["<rootDir>/test/setup.ts"],
+    },
+    {
       displayName: "auth",
       rootDir: "apps/auth",
       testEnvironment: "node",

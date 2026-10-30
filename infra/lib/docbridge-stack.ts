@@ -439,11 +439,11 @@ export class DocBridgeStack extends cdk.Stack {
         containerSecrets.WORKER_CLIENT_SECRET =
           ecs.Secret.fromSecretsManager(workerSecret);
       }
-      if (name === "api") {
+      if (name === "api" || name === "worker") {
         containerEnv.PLATFORM_INTERNAL_URL =
           "http://platform.docbridge.local:3002";
       }
-      if (name === "api" || name === "platform") {
+      if (name === "api" || name === "platform" || name === "worker") {
         containerEnv.AUTH_INTERNAL_URL = "http://auth.docbridge.local:3001";
       }
       taskDef.addContainer(`${name}-container`, {

@@ -9,7 +9,8 @@ async function bootstrap() {
   logger.log(
     `NODE_ENV=${config.NODE_ENV} AWS_ENDPOINT_URL ${config.AWS_ENDPOINT_URL ? "set" : "unset"}`,
   );
-  await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.createApplicationContext(AppModule);
+  app.enableShutdownHooks();
   logger.log("started");
 }
 
