@@ -60,12 +60,12 @@ run("job reads e2e", () => {
     submitter?: string;
     submittedAt?: Date;
     completedAt?: Date | null;
-    files?: { name: string; sizeBytes?: number }[];
+    files?: { name: string; sizeBytes?: number; stagedAt?: Date }[];
     tasks: SeedTask[];
   }): Promise<{ jobId: string; fileIds: string[] }> {
     const submitter = opts.submitter ?? OWNER_C;
     const jobId = uuidv7();
-    const files: { name: string; sizeBytes?: number }[] =
+    const files: { name: string; sizeBytes?: number; stagedAt?: Date }[] =
       opts.files ?? opts.tasks.map((_, i) => ({ name: `file-${i}.pdf` }));
     const fileIds = files.map(() => uuidv7());
     await db.job.create({
@@ -91,7 +91,7 @@ run("job reads e2e", () => {
               checksumCrc32c: "AAAAAA==",
               storageKey: `staged/${submitter}/${fileIds[i]}`,
               status: "staged" as const,
-              stagedAt: new Date(),
+              stagedAt: file.stagedAt ?? new Date(),
             })),
           },
         },
@@ -157,10 +157,7 @@ run("job reads e2e", () => {
 
     it("returns an empty page when nothing is visible", async () => {
       const token = await userToken(OWNER_D, [TEAM_FOREIGN]);
-      const res = await api()
-        .get("/api/jobs")
-        .set(bearer(token))
-        .expect(200);
+      const res = await api().get("/api/jobs").set(bearer(token)).expect(200);
       expect(res.body).toEqual({ items: [], nextCursor: null });
     });
 
@@ -187,10 +184,7 @@ run("job reads e2e", () => {
       await seedJob({ teams: [TEAM_FOREIGN], tasks: [{}] });
 
       const token = await userToken(OWNER_D, [TEAM_2]);
-      const other = await api()
-        .get("/api/jobs")
-        .set(bearer(token))
-        .expect(200);
+      const other = await api().get("/api/jobs").set(bearer(token)).expect(200);
       expect(
         other.body.items.some((j: { id: string }) => j.id === visible.jobId),
       ).toBe(false);
@@ -409,6 +403,94 @@ run("job reads e2e", () => {
       expect(pendingTask.fileId).toBe(job.fileIds[1]);
       expect(pendingTask.attemptCount).toBe(2);
       expect(pendingTask.lastError).toBeNull();
+    });
+  });
+
+  describe("GET /api/jobs/:id/files/:fileId/download", () => {
+    it("rejects requests without a token", async () => {
+      const res = await api()
+        .get(`/api/jobs/${uuidv7()}/files/${uuidv7()}/download`)
+        .expect(401);
+      expect(res.body.error.code).toBe("unauthorized");
+    });
+
+    it("answers 403 job_not_visible for missing, malformed and foreign-team jobs", async () => {
+      const foreign = await seedJob({ teams: [TEAM_FOREIGN], tasks: [{}] });
+      const token = await userToken(OWNER_C, [TEAM_1]);
+      for (const jobId of [uuidv7(), "not-a-uuid", foreign.jobId]) {
+        const res = await api()
+          .get(`/api/jobs/${jobId}/files/${uuidv7()}/download`)
+          .set(bearer(token))
+          .expect(403);
+        expect(res.body.error.code).toBe("job_not_visible");
+      }
+    });
+
+    it("answers 404 file_not_in_job for a file attached to a different job", async () => {
+      const a = await seedJob({ teams: [TEAM_1], tasks: [{}] });
+      const b = await seedJob({ teams: [TEAM_1], tasks: [{}] });
+      const token = await userToken(OWNER_D, [TEAM_1]);
+      const res = await api()
+        .get(`/api/jobs/${a.jobId}/files/${b.fileIds[0]}/download`)
+        .set(bearer(token))
+        .expect(404);
+      expect(res.body.error.code).toBe("file_not_in_job");
+    });
+
+    it("answers 404 file_not_in_job when the file sits on the job but has no task", async () => {
+      const job = await seedJob({
+        teams: [TEAM_1],
+        files: [{ name: "a.pdf" }, { name: "b.pdf" }],
+        tasks: [{ fileIndex: 0 }],
+      });
+      const token = await userToken(OWNER_C, [TEAM_1]);
+      const res = await api()
+        .get(`/api/jobs/${job.jobId}/files/${job.fileIds[1]}/download`)
+        .set(bearer(token))
+        .expect(404);
+      expect(res.body.error.code).toBe("file_not_in_job");
+    });
+
+    it("answers 410 file_expired once staged_at + 32 days has passed", async () => {
+      const job = await seedJob({
+        teams: [TEAM_1],
+        files: [
+          {
+            name: "old.pdf",
+            stagedAt: new Date(Date.now() - 33 * 24 * 60 * 60 * 1000),
+          },
+        ],
+        tasks: [{}],
+      });
+      const token = await userToken(OWNER_C, [TEAM_1]);
+      const res = await api()
+        .get(`/api/jobs/${job.jobId}/files/${job.fileIds[0]}/download`)
+        .set(bearer(token))
+        .expect(410);
+      expect(res.body.error.code).toBe("file_expired");
+    });
+
+    it("returns a 5-minute presigned GET with attachment disposition", async () => {
+      const job = await seedJob({
+        teams: [TEAM_1],
+        files: [{ name: "report.pdf" }],
+        tasks: [{}],
+      });
+      const token = await userToken(OWNER_D, [TEAM_1]);
+      const res = await api()
+        .get(`/api/jobs/${job.jobId}/files/${job.fileIds[0]}/download`)
+        .set(bearer(token))
+        .expect(200);
+      const u = new URL(res.body.url);
+      expect(u.searchParams.get("X-Amz-Expires")).toBe("300");
+      expect(u.pathname).toContain(`staged/${OWNER_C}/${job.fileIds[0]}`);
+      const disposition =
+        u.searchParams.get("response-content-disposition") ?? "";
+      expect(disposition).toContain('attachment; filename="report.pdf"');
+      expect(Date.parse(res.body.expiresAt)).toBeGreaterThan(Date.now());
+      expect(Date.parse(res.body.expiresAt)).toBeLessThanOrEqual(
+        Date.now() + 300_000,
+      );
     });
   });
 });

@@ -9,6 +9,7 @@ import {
   encodeJobCursor,
   ErrorCode,
   JobDetailResponse,
+  JobFileDownloadResponse,
   JobListQuery,
   JobListResponse,
   JobSummary,
@@ -16,17 +17,23 @@ import {
   type UserClaims,
 } from "@docbridge/contracts";
 import { Prisma, type TaskStatus } from "@docbridge/db-docbridge";
+import { presignGetObject } from "@docbridge/storage";
 import { AppError } from "../common/app-error";
 import { PlatformClient } from "../platform/platform-client";
 import { PrismaService } from "../prisma/prisma.service";
+import { StagingStorage } from "../storage/staging-storage.service";
 
 class ClaimMismatch extends Error {}
+
+const GET_URL_TTL_SECONDS = 300;
+const STAGED_FILE_TTL_MS = 32 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class JobsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PlatformClient) private readonly platform: PlatformClient,
+    @Inject(StagingStorage) private readonly storage: StagingStorage,
   ) {}
 
   async createJob(
@@ -53,10 +60,9 @@ export class JobsService {
       });
     }
 
-    const resolved = await this.platform.resolveFolders(
-      bearerToken,
-      [...new Set(mappings.flatMap((m) => m.folderIds))],
-    );
+    const resolved = await this.platform.resolveFolders(bearerToken, [
+      ...new Set(mappings.flatMap((m) => m.folderIds)),
+    ]);
     if (resolved.missing.length > 0) {
       throw new AppError(404, "folder_not_found", "Folder not found", {
         folderIds: resolved.missing,
@@ -74,9 +80,7 @@ export class JobsService {
         { folderIds: denied },
       );
     }
-    const byFolder = new Map(
-      resolved.resolved.map((r) => [r.folderId, r]),
-    );
+    const byFolder = new Map(resolved.resolved.map((r) => [r.folderId, r]));
 
     const fileIds = mappings.map((m) => m.fileId);
     const jobId = uuidv7();
@@ -181,7 +185,11 @@ export class JobsService {
         })
       : null;
     if (!job) {
-      throw new AppError(403, "job_not_visible", "Job not found or not visible");
+      throw new AppError(
+        403,
+        "job_not_visible",
+        "Job not found or not visible",
+      );
     }
     const counts = { pending: 0, inProgress: 0, completed: 0, failed: 0 };
     let pendingAttempts = 0;
@@ -216,6 +224,52 @@ export class JobsService {
     };
   }
 
+  async downloadFile(
+    claims: UserClaims,
+    jobId: string,
+    fileId: string,
+  ): Promise<JobFileDownloadResponse> {
+    const visible = z.uuid().safeParse(jobId).success
+      ? await this.prisma.db.job.findFirst({
+          where: {
+            id: jobId,
+            teams: { some: { teamId: { in: claims.teams } } },
+          },
+          select: { id: true },
+        })
+      : null;
+    if (!visible) {
+      throw new AppError(
+        403,
+        "job_not_visible",
+        "Job not found or not visible",
+      );
+    }
+    const file = z.uuid().safeParse(fileId).success
+      ? await this.prisma.db.stagedFile.findFirst({
+          where: { id: fileId, tasks: { some: { jobId } } },
+        })
+      : null;
+    if (!file) {
+      throw new AppError(
+        404,
+        "file_not_in_job",
+        "File is not part of this job",
+      );
+    }
+    const cutoff = new Date(Date.now() - STAGED_FILE_TTL_MS);
+    if (file.stagedAt === null || file.stagedAt <= cutoff) {
+      throw new AppError(410, "file_expired", "File is no longer available");
+    }
+    const { url } = await presignGetObject(this.storage.presign, {
+      bucket: this.storage.bucket,
+      key: file.storageKey,
+      downloadName: file.fileName,
+      expiresIn: GET_URL_TTL_SECONDS,
+    });
+    return { url, expiresAt: expiresAtIso(GET_URL_TTL_SECONDS) };
+  }
+
   private async countTasksByStatus(
     jobIds: string[],
   ): Promise<Map<string, TaskCounts & { pendingAttempts: number }>> {
@@ -228,10 +282,7 @@ export class JobsService {
             _count: { _all: true },
             _sum: { attemptCount: true },
           });
-    const counts = new Map<
-      string,
-      TaskCounts & { pendingAttempts: number }
-    >();
+    const counts = new Map<string, TaskCounts & { pendingAttempts: number }>();
     for (const row of grouped) {
       const acc = counts.get(row.jobId) ?? {
         pending: 0,
@@ -320,10 +371,12 @@ export class JobsService {
       }
     }
     if (files.length === 0) {
-      files.push(...fileIds.map((fileId) => ({
-        fileId,
-        reason: "file_not_staged" as ErrorCode,
-      })));
+      files.push(
+        ...fileIds.map((fileId) => ({
+          fileId,
+          reason: "file_not_staged" as ErrorCode,
+        })),
+      );
     }
     return new AppError(
       409,
@@ -332,6 +385,10 @@ export class JobsService {
       { files },
     );
   }
+}
+
+function expiresAtIso(ttlSeconds: number): string {
+  return new Date(Date.now() + ttlSeconds * 1000).toISOString();
 }
 
 function countKey(status: TaskStatus): keyof TaskCounts {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "@jest/globals";
-import { createS3Client, presignPutObject, presignUploadPart } from "../src";
+import {
+  createS3Client,
+  presignGetObject,
+  presignPutObject,
+  presignUploadPart,
+} from "../src";
 
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
@@ -59,5 +64,24 @@ describe("presignUploadPart", () => {
     }
     expect(u.searchParams.get("x-amz-sdk-checksum-algorithm")).toBeNull();
     expect(headers).toEqual({ "x-amz-checksum-crc32c": "BBBBBB==" });
+  });
+});
+
+describe("presignGetObject", () => {
+  it("carries expiry and an attachment disposition as signed query params", async () => {
+    const { url } = await presignGetObject(client(), {
+      bucket: "docbridge-staging",
+      key: "staged/user/file",
+      downloadName: 'report "Q4" ü.pdf',
+      expiresIn: 300,
+    });
+    const u = new URL(url);
+    expect(u.searchParams.get("X-Amz-Expires")).toBe("300");
+    const disposition =
+      u.searchParams.get("response-content-disposition") ?? "";
+    expect(disposition).toContain('attachment; filename="report _Q4_ _.pdf"');
+    expect(disposition).toContain(
+      "filename*=UTF-8''report%20%22Q4%22%20%C3%BC.pdf",
+    );
   });
 });

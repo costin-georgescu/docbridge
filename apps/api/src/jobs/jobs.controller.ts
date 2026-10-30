@@ -18,6 +18,7 @@ import {
   CreateJobRequest,
   CreateJobResponse,
   JobDetailResponse,
+  JobFileDownloadResponse,
   JobListQuery,
   JobListResponse,
   type UserClaims,
@@ -27,9 +28,7 @@ import { JobsService } from "./jobs.service";
 
 @Controller("api/jobs")
 export class JobsController {
-  constructor(
-    @Inject(JobsService) private readonly jobs: JobsService,
-  ) {}
+  constructor(@Inject(JobsService) private readonly jobs: JobsService) {}
 
   @Post()
   @HttpCode(202)
@@ -58,6 +57,16 @@ export class JobsController {
     @Param("id") id: string,
   ): Promise<JobDetailResponse> {
     return this.jobs.getJob(claims, id);
+  }
+
+  @Get(":id/files/:fileId/download")
+  @RequireUser()
+  downloadFile(
+    @Claims() claims: UserClaims,
+    @Param("id") id: string,
+    @Param("fileId") fileId: string,
+  ): Promise<JobFileDownloadResponse> {
+    return this.jobs.downloadFile(claims, id, fileId);
   }
 }
 

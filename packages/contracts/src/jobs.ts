@@ -158,6 +158,13 @@ export const JobDetailResponse = JobSummary.extend({
 
 export type JobDetailResponse = z.infer<typeof JobDetailResponse>;
 
+export const JobFileDownloadResponse = z.object({
+  url: z.string(),
+  expiresAt: z.iso.datetime(),
+});
+
+export type JobFileDownloadResponse = z.infer<typeof JobFileDownloadResponse>;
+
 export type JobLimitViolation =
   | "too_many_files"
   | "too_many_folders"
