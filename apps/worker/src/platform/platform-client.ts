@@ -1,15 +1,12 @@
 import { Readable } from "node:stream";
-import { z } from "zod";
-import { ErrorCode, ErrorResponse } from "@docbridge/contracts";
+import {
+  DeliverDocumentResponse,
+  ErrorCode,
+  ErrorResponse,
+} from "@docbridge/contracts";
 
 /** TDD 2.7: one delivery attempt must finish within 15 minutes. */
 export const DELIVERY_DEADLINE_MS = 15 * 60 * 1000;
-
-const DeliverResponse = z.object({
-  documentId: z.uuid(),
-  versionNo: z.number().int().positive(),
-  alreadyDelivered: z.boolean().optional(),
-});
 
 export type DeliveryOutcome =
   | { kind: "delivered"; documentId: string; versionNo: number }
@@ -99,7 +96,7 @@ export class PlatformDeliveryClient {
     }
 
     if (res.status === 200 || res.status === 201) {
-      const parsed = DeliverResponse.safeParse(
+      const parsed = DeliverDocumentResponse.safeParse(
         await res.json().catch(() => null),
       );
       if (!parsed.success) {

@@ -109,3 +109,11 @@ export const FolderResponse = z.object({
 });
 
 export type FolderResponse = z.infer<typeof FolderResponse>;
+
+export const DeliverDocumentResponse = z.object({
+  documentId: z.uuid(),
+  versionNo: z.number().int().positive(),
+  alreadyDelivered: z.boolean().optional(),
+});
+
+export type DeliverDocumentResponse = z.infer<typeof DeliverDocumentResponse>;

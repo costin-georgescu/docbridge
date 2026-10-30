@@ -8,6 +8,7 @@ import {
 export const envSchema = baseEnvSchema.extend({
   PORT: z.coerce.number().int().default(3002),
   AUTH_INTERNAL_URL: z.string().url(),
+  PLATFORM_BUCKET: z.string().min(1),
   WEB_ORIGIN: z.string().url().optional(),
 });
 

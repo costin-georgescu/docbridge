@@ -136,6 +136,7 @@ export default {
           "<rootDir>/../../packages/auth-core/src/index.ts",
         "^@docbridge/db-platform$":
           "<rootDir>/../../packages/db-platform/dist/index.js",
+        "^@docbridge/storage$": "<rootDir>/../../packages/storage/src/index.ts",
       },
       setupFiles: ["<rootDir>/test/setup.ts"],
     },
