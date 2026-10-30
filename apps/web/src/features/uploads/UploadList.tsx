@@ -1,4 +1,5 @@
 import { Button } from "../../components/Button";
+import { humanSize } from "../../lib/format";
 import { UploadItem, UploadPhase } from "./upload-manager";
 
 export const STATUS_LABELS: Record<UploadPhase, string> = {
@@ -10,23 +11,6 @@ export const STATUS_LABELS: Record<UploadPhase, string> = {
   staged: "Staged",
   error: "Failed",
 };
-
-function humanSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`;
-  }
-  const units = ["KiB", "MiB", "GiB"];
-  let value = sizeBytes;
-  let unit = "B";
-  for (const next of units) {
-    if (value < 1024) {
-      break;
-    }
-    value /= 1024;
-    unit = next;
-  }
-  return `${value.toFixed(1)} ${unit}`;
-}
 
 export function UploadList({
   items,

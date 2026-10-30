@@ -15,6 +15,8 @@ import { useSession } from "./auth/useSession";
 import { Button } from "./components/Button";
 import { AdminPage } from "./features/admin/AdminPage";
 import { LoginPage } from "./features/auth/LoginPage";
+import { JobDetailPage } from "./features/jobs/JobDetailPage";
+import { JobsPage } from "./features/jobs/JobsPage";
 import { TreePage } from "./features/tree/TreePage";
 import { UploadPage } from "./features/uploads/UploadPage";
 
@@ -50,6 +52,13 @@ function Layout() {
                   activeProps={{ className: "font-medium text-blue-600" }}
                 >
                   Upload
+                </Link>
+                <Link
+                  to="/jobs"
+                  className="text-gray-900 hover:text-blue-600"
+                  activeProps={{ className: "font-medium text-blue-600" }}
+                >
+                  Jobs
                 </Link>
                 {claims?.admin && (
                   <Link
@@ -120,6 +129,20 @@ const uploadRoute = createRoute({
   component: UploadPage,
 });
 
+const jobsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/jobs",
+  beforeLoad: ({ location }) => requireAuthentication(location.href),
+  component: JobsPage,
+});
+
+const jobDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/jobs/$jobId",
+  beforeLoad: ({ location }) => requireAuthentication(location.href),
+  component: JobDetailPage,
+});
+
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
@@ -136,6 +159,8 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   treeRoute,
   uploadRoute,
+  jobsRoute,
+  jobDetailRoute,
   adminRoute,
 ]);
 

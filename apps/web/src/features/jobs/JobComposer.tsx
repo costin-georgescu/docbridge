@@ -1,5 +1,5 @@
 import { useMemo, useReducer, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CreateJobRequest,
   CreateJobResponse,
@@ -31,6 +31,7 @@ export function JobComposer({
   const [error, setError] = useState<ApiError | null>(null);
   const [genericError, setGenericError] = useState(false);
   const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const folderIndex = useMemo(() => buildFolderIndex(tree), [tree]);
   const summary = summarize(state, items);
   const folders = state.folderIds
@@ -43,6 +44,7 @@ export function JobComposer({
       setError(null);
       setGenericError(false);
       setSubmittedJobId(response.jobId);
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
       dispatch({ type: "reset" });
       onSubmitted(
         request.mappings.map((m) => {
