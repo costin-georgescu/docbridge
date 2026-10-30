@@ -6,6 +6,8 @@ import { StagingConfirmer } from "./upload-events/staging-confirmer";
 import { UploadEventsConsumer } from "./upload-events/upload-events.consumer";
 import { ReconciliationSweep } from "./upload-events/reconciliation.sweep";
 import { TaskPublisher } from "./tasks/task-publisher";
+import { JobFinalizer } from "./finalizer/job-finalizer";
+import { HousekeepingSweep } from "./finalizer/housekeeping.sweep";
 
 @Module({
   providers: [
@@ -16,6 +18,8 @@ import { TaskPublisher } from "./tasks/task-publisher";
     UploadEventsConsumer,
     ReconciliationSweep,
     TaskPublisher,
+    JobFinalizer,
+    HousekeepingSweep,
   ],
 })
 export class AppModule {}
