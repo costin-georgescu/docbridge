@@ -1,7 +1,7 @@
 import { Button } from "../../components/Button";
 import { UploadItem, UploadPhase } from "./upload-manager";
 
-const STATUS_LABELS: Record<UploadPhase, string> = {
+export const STATUS_LABELS: Record<UploadPhase, string> = {
   queued: "Queued",
   hashing: "Computing checksum",
   uploading: "Uploading",

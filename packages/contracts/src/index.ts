@@ -12,3 +12,4 @@ export * from "./auth";
 export * from "./platform";
 export * from "./uploads";
 export * from "./queues";
+export * from "./jobs";

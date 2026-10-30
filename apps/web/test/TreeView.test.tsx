@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TreeResponse } from "@docbridge/contracts";
@@ -78,6 +78,46 @@ describe("TreeView", () => {
     expect(screen.getByText("Contracts")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Collapse all" }));
     expect(screen.queryByText("Invoices")).toBeNull();
+  });
+
+  it("selection mode toggles folders without expanding them", async () => {
+    const user = userEvent.setup();
+    const onToggle = jest.fn();
+    const { rerender } = render(
+      <TreeView
+        tree={tree}
+        selection={{
+          selected: new Set(["f1"]),
+          onToggle,
+          limitReached: false,
+        }}
+      />,
+    );
+    await user.click(screen.getByText("Alpha Team"));
+    await user.click(screen.getByText("Invoices"));
+    const inbox = screen.getByRole("checkbox", { name: "Inbox" });
+    await user.click(inbox);
+    expect(onToggle).toHaveBeenCalledWith("f3");
+    expect(screen.getByRole("checkbox", { name: "2024" })).toBeDefined();
+    expect(screen.queryByText("Archive")).toBeNull();
+
+    rerender(
+      <TreeView
+        tree={tree}
+        selection={{
+          selected: new Set(["f1"]),
+          onToggle,
+          limitReached: true,
+        }}
+      />,
+    );
+    const checked = screen.getByRole("checkbox", { name: "2024" });
+    const disabled = screen.getByRole("checkbox", { name: "Inbox" });
+    expect(checked.getAttribute("aria-checked")).toBe("true");
+    expect(checked.getAttribute("aria-disabled")).toBeNull();
+    expect(disabled.getAttribute("aria-disabled")).toBe("true");
+    await user.click(disabled);
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
   it("shows the assigned-destinations empty state", () => {

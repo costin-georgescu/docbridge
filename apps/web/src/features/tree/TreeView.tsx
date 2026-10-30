@@ -1,4 +1,5 @@
 import { ReactNode, useMemo, useState } from "react";
+import { Checkbox } from "@base-ui-components/react/checkbox";
 import { TreeFolder, TreeResponse } from "@docbridge/contracts";
 import { Button } from "../../components/Button";
 import { Input } from "../../components/Input";
@@ -26,7 +27,19 @@ function countNodes(tree: TreeResponse): {
   return { teams: tree.teams.length, binders, folders };
 }
 
-export function TreeView({ tree }: { tree: TreeResponse }) {
+export interface TreeSelection {
+  selected: ReadonlySet<string>;
+  onToggle: (folderId: string) => void;
+  limitReached: boolean;
+}
+
+export function TreeView({
+  tree,
+  selection,
+}: {
+  tree: TreeResponse;
+  selection?: TreeSelection;
+}) {
   const [filter, setFilter] = useState("");
   const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set());
   const filtering = filter.trim().length > 0;
@@ -60,20 +73,37 @@ export function TreeView({ tree }: { tree: TreeResponse }) {
             role="treeitem"
             aria-expanded={expandable ? expanded : undefined}
           >
-            {expandable ? (
-              <button
-                type="button"
-                onClick={() => toggle(folder.id)}
-                className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-sm text-gray-900 hover:bg-gray-100"
-              >
-                <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
-                {folder.name}
-              </button>
-            ) : (
-              <span className="block px-1 py-0.5 pl-5 text-sm text-gray-900">
-                {folder.name}
-              </span>
-            )}
+            <div className="flex items-center gap-1">
+              {selection && (
+                <Checkbox.Root
+                  checked={selection.selected.has(folder.id)}
+                  disabled={
+                    selection.limitReached && !selection.selected.has(folder.id)
+                  }
+                  onCheckedChange={() => selection.onToggle(folder.id)}
+                  aria-label={folder.name}
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-gray-300 bg-white data-[checked]:border-blue-600 data-[checked]:bg-blue-600 disabled:opacity-50"
+                >
+                  <Checkbox.Indicator className="text-white">
+                    ✓
+                  </Checkbox.Indicator>
+                </Checkbox.Root>
+              )}
+              {expandable ? (
+                <button
+                  type="button"
+                  onClick={() => toggle(folder.id)}
+                  className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-sm text-gray-900 hover:bg-gray-100"
+                >
+                  <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+                  {folder.name}
+                </button>
+              ) : (
+                <span className="block px-1 py-0.5 pl-5 text-sm text-gray-900">
+                  {folder.name}
+                </span>
+              )}
+            </div>
             {expanded && renderFolders(folder.folders)}
           </li>
         );
