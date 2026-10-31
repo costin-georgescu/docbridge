@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
   - "infra"
+  - "tests/*"
 allowBuilds:
   "@parcel/watcher": true
   esbuild: true

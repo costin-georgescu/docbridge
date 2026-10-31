@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "emitDeclarationOnly": true,
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": [
+    "tests",
+    "playwright.config.ts",
+    "global-setup.ts",
+    "global-teardown.ts",
+    "fixtures.ts"
+  ]
+}

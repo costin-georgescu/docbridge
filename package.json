@@ -19,6 +19,8 @@
     "db:migrate": "node --env-file=.env scripts/db.mjs migrate:deploy",
     "db:migrate:dev": "node --env-file=.env scripts/db.mjs migrate:dev",
     "db:seed": "node --env-file=.env --import tsx scripts/seed.ts",
+    "e2e": "pnpm --filter @docbridge/e2e test",
+    "e2e:install": "pnpm --filter @docbridge/e2e install-browsers",
     "auth:keygen": "node scripts/gen-signing-key.mjs"
   },
   "devDependencies": {
