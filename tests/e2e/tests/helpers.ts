@@ -56,8 +56,9 @@ export async function waitStaged(
   fileName: string,
   timeout = 60_000,
 ) {
-  // listitem excludes the tree's treeitems; the file name is unique per run.
-  const row = page.getByRole("listitem").filter({ hasText: fileName });
+  // The mapping grid shows each staged upload as a table row; the file name
+  // is unique per run.
+  const row = page.getByRole("row").filter({ hasText: fileName });
   await expect(row).toContainText("Staged", { timeout });
 }
 

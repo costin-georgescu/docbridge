@@ -83,6 +83,9 @@ function Layout() {
               <span className="flex size-7 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
                 {claims.name.slice(0, 1).toUpperCase()}
               </span>
+              <span className="text-xs font-medium text-ink">
+                {claims.name}
+              </span>
               <button
                 type="button"
                 onClick={() => void session.logout()}
@@ -94,7 +97,7 @@ function Layout() {
           )}
         </div>
       </div>
-      <main className="mx-auto max-w-7xl px-6 pb-16 pt-24">
+      <main className="px-6 pb-16 pt-24">
         <Outlet />
       </main>
     </div>

@@ -22,11 +22,15 @@ export function JobComposer({
   tree,
   submit,
   onSubmitted,
+  onRetryItem,
+  onRemoveItem,
 }: {
   items: UploadItem[];
   tree: TreeResponse;
   submit: (req: CreateJobRequest) => Promise<CreateJobResponse>;
   onSubmitted: (itemIds: string[], jobId: string) => void;
+  onRetryItem: (itemId: string) => void;
+  onRemoveItem: (itemId: string) => void;
 }) {
   const [state, dispatch] = useReducer(mappingReducer, initialMappingState);
   const [error, setError] = useState<ApiError | null>(null);
@@ -74,40 +78,62 @@ export function JobComposer({
   return (
     <Card
       title="Destinations & mapping"
-      className="flex flex-col lg:h-[calc(100vh-14rem)] lg:min-h-[28rem]"
+      className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="min-h-0 flex-1">
-        <TreeView
-          tree={tree}
-          selection={{
-            selected: new Set(state.folderIds),
-            onToggle: (folderId) => change({ type: "toggleFolder", folderId }),
-            limitReached: state.folderIds.length >= MAX_JOB_FOLDERS,
-          }}
-        />
-      </div>
-      {folders.length > 0 && summary.rows.length > 0 && (
-        <div className="mt-4 max-h-[45%] overflow-auto border-t border-line pt-4">
-          <MappingMatrix
-            rows={summary.rows}
-            folders={folders}
-            onToggleCell={(itemId, folderId) =>
-              change({ type: "toggleCell", itemId, folderId })
-            }
-            onSetColumn={(folderId, assigned) =>
-              change({
-                type: "setColumn",
-                folderId,
-                itemIds: summary.rows.map((r) => r.item.id),
-                assigned,
-              })
-            }
-            onRemoveFolder={(folderId) =>
-              change({ type: "toggleFolder", folderId })
-            }
+      <div className="flex min-h-0 flex-1 gap-4">
+        <div className="w-80 shrink-0">
+          <TreeView
+            tree={tree}
+            selection={{
+              selected: new Set(state.folderIds),
+              onToggle: (folderId) =>
+                change({ type: "toggleFolder", folderId }),
+              limitReached: state.folderIds.length >= MAX_JOB_FOLDERS,
+            }}
           />
         </div>
-      )}
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto border-l border-line pl-4">
+          {summary.rows.length > 0 ? (
+            <MappingMatrix
+              rows={summary.rows}
+              folders={folders}
+              onToggleCell={(itemId, folderId) =>
+                change({ type: "toggleCell", itemId, folderId })
+              }
+              onSetCell={(itemId, folderId, assigned) =>
+                change({ type: "setCell", itemId, folderId, assigned })
+              }
+              onSetRow={(itemId, assigned) =>
+                change({ type: "setRow", itemId, assigned })
+              }
+              onSetColumn={(folderId, assigned) =>
+                change({
+                  type: "setColumn",
+                  folderId,
+                  itemIds: summary.rows.map((r) => r.item.id),
+                  assigned,
+                })
+              }
+              onSetAll={(assigned) =>
+                change({
+                  type: "setAll",
+                  itemIds: summary.rows.map((r) => r.item.id),
+                  assigned,
+                })
+              }
+              onRemoveFolder={(folderId) =>
+                change({ type: "toggleFolder", folderId })
+              }
+              onRetryItem={onRetryItem}
+              onRemoveItem={onRemoveItem}
+            />
+          ) : (
+            <p className="text-sm text-muted">
+              Add files above, then select destination folders.
+            </p>
+          )}
+        </div>
+      </div>
       <div className="mt-4 space-y-2 border-t border-line pt-4">
         <p className="text-sm text-ink">
           <span

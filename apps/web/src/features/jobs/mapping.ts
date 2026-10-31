@@ -20,6 +20,9 @@ export const initialMappingState: MappingState = {
 export type MappingAction =
   | { type: "toggleFolder"; folderId: string }
   | { type: "toggleCell"; itemId: string; folderId: string }
+  | { type: "setCell"; itemId: string; folderId: string; assigned: boolean }
+  | { type: "setRow"; itemId: string; assigned: boolean }
+  | { type: "setAll"; itemIds: string[]; assigned: boolean }
   | {
       type: "setColumn";
       folderId: string;
@@ -31,6 +34,35 @@ export type MappingAction =
 function ordered(folderIds: string[], assigned: Iterable<string>): string[] {
   const set = new Set(assigned);
   return folderIds.filter((id) => set.has(id));
+}
+
+function applyCell(
+  state: MappingState,
+  itemId: string,
+  folderId: string,
+  assigned: boolean,
+): MappingState {
+  if (!state.folderIds.includes(folderId)) {
+    return state;
+  }
+  const current = state.assignments[itemId] ?? [];
+  const has = current.includes(folderId);
+  if (has === assigned) {
+    return state;
+  }
+  const next = ordered(
+    state.folderIds,
+    assigned
+      ? [...current, folderId]
+      : current.filter((id) => id !== folderId),
+  );
+  const assignments = { ...state.assignments };
+  if (next.length > 0) {
+    assignments[itemId] = next;
+  } else {
+    delete assignments[itemId];
+  }
+  return { ...state, assignments };
 }
 
 export function mappingReducer(
@@ -58,49 +90,46 @@ export function mappingReducer(
       return { ...state, folderIds: [...state.folderIds, action.folderId] };
     }
     case "toggleCell": {
-      if (!state.folderIds.includes(action.folderId)) {
-        return state;
-      }
       const current = state.assignments[action.itemId] ?? [];
-      const has = current.includes(action.folderId);
-      const next = ordered(
-        state.folderIds,
-        has
-          ? current.filter((id) => id !== action.folderId)
-          : [...current, action.folderId],
+      return applyCell(
+        state,
+        action.itemId,
+        action.folderId,
+        !current.includes(action.folderId),
       );
+    }
+    case "setCell":
+      return applyCell(
+        state,
+        action.itemId,
+        action.folderId,
+        action.assigned,
+      );
+    case "setRow": {
       const assignments = { ...state.assignments };
-      if (next.length > 0) {
-        assignments[action.itemId] = next;
+      if (action.assigned) {
+        assignments[action.itemId] = [...state.folderIds];
       } else {
         delete assignments[action.itemId];
       }
       return { ...state, assignments };
     }
-    case "setColumn": {
-      if (!state.folderIds.includes(action.folderId)) {
-        return state;
+    case "setAll": {
+      if (!action.assigned) {
+        return { ...state, assignments: {} };
       }
-      const assignments = { ...state.assignments };
+      const assignments: Record<string, string[]> = {};
       for (const itemId of action.itemIds) {
-        const current = assignments[itemId] ?? [];
-        const has = current.includes(action.folderId);
-        if (action.assigned === has) {
-          continue;
-        }
-        const next = ordered(
-          state.folderIds,
-          action.assigned
-            ? [...current, action.folderId]
-            : current.filter((id) => id !== action.folderId),
-        );
-        if (next.length > 0) {
-          assignments[itemId] = next;
-        } else {
-          delete assignments[itemId];
-        }
+        assignments[itemId] = [...state.folderIds];
       }
       return { ...state, assignments };
+    }
+    case "setColumn": {
+      let next = state;
+      for (const itemId of action.itemIds) {
+        next = applyCell(next, itemId, action.folderId, action.assigned);
+      }
+      return next;
     }
     case "reset":
       return initialMappingState;

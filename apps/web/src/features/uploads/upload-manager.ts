@@ -20,6 +20,16 @@ export type UploadPhase =
   | "staged"
   | "error";
 
+export const STATUS_LABELS: Record<UploadPhase, string> = {
+  queued: "Queued",
+  hashing: "Computing checksum",
+  uploading: "Uploading",
+  completing: "Completing",
+  processing: "Processing",
+  staged: "Staged",
+  error: "Failed",
+};
+
 export interface UploadItem {
   id: string;
   name: string;

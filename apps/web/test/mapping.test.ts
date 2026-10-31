@@ -94,6 +94,66 @@ describe("mappingReducer", () => {
     });
     expect(s.assignments).toEqual({});
   });
+
+  it("setCell assigns a single pair and is a no-op when unchanged", () => {
+    let s = mappingReducer(initialMappingState, {
+      type: "toggleFolder",
+      folderId: F1,
+    });
+    s = mappingReducer(s, {
+      type: "setCell",
+      itemId: "i1",
+      folderId: F1,
+      assigned: true,
+    });
+    expect(s.assignments).toEqual({ i1: [F1] });
+    const same = mappingReducer(s, {
+      type: "setCell",
+      itemId: "i1",
+      folderId: F1,
+      assigned: true,
+    });
+    expect(same).toBe(s);
+    s = mappingReducer(s, {
+      type: "setCell",
+      itemId: "i1",
+      folderId: F1,
+      assigned: false,
+    });
+    expect(s.assignments).toEqual({});
+  });
+
+  it("setRow assigns every chosen folder to one file", () => {
+    let s = mappingReducer(initialMappingState, {
+      type: "toggleFolder",
+      folderId: F1,
+    });
+    s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
+    s = mappingReducer(s, { type: "setRow", itemId: "i1", assigned: true });
+    expect(s.assignments).toEqual({ i1: [F1, F2] });
+    s = mappingReducer(s, { type: "setRow", itemId: "i1", assigned: false });
+    expect(s.assignments).toEqual({});
+  });
+
+  it("setAll fills or clears the whole grid", () => {
+    let s = mappingReducer(initialMappingState, {
+      type: "toggleFolder",
+      folderId: F1,
+    });
+    s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
+    s = mappingReducer(s, {
+      type: "setAll",
+      itemIds: ["i1", "i2"],
+      assigned: true,
+    });
+    expect(s.assignments).toEqual({ i1: [F1, F2], i2: [F1, F2] });
+    s = mappingReducer(s, {
+      type: "setAll",
+      itemIds: ["i1", "i2"],
+      assigned: false,
+    });
+    expect(s.assignments).toEqual({});
+  });
 });
 
 describe("summarize", () => {

@@ -71,6 +71,8 @@ function renderComposer(
   const submit =
     props.submit ?? jest.fn(() => Promise.resolve({ jobId: JOB_ID }));
   const onSubmitted = props.onSubmitted ?? jest.fn();
+  const onRetryItem = props.onRetryItem ?? jest.fn();
+  const onRemoveItem = props.onRemoveItem ?? jest.fn();
   render(
     <QueryClientProvider client={client}>
       <JobComposer
@@ -78,10 +80,12 @@ function renderComposer(
         tree={props.tree ?? tree}
         submit={submit}
         onSubmitted={onSubmitted}
+        onRetryItem={onRetryItem}
+        onRemoveItem={onRemoveItem}
       />
     </QueryClientProvider>,
   );
-  return { submit, onSubmitted };
+  return { submit, onSubmitted, onRetryItem, onRemoveItem };
 }
 
 async function expandAll(user: ReturnType<typeof userEvent.setup>) {
@@ -166,6 +170,84 @@ describe("JobComposer", () => {
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain("Job submitted.");
     expect(status.textContent).toContain(JOB_ID);
+  });
+
+  it("assigns a whole row and the whole grid via header checkboxes", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    await expandAll(user);
+    await user.click(screen.getByRole("checkbox", { name: "2024" }));
+    await user.click(screen.getByRole("checkbox", { name: "Contracts" }));
+
+    // Row header: one file to every chosen folder.
+    await user.click(
+      screen.getByRole("checkbox", { name: "Assign a.pdf to all folders" }),
+    );
+    expect(
+      screen
+        .getByRole("checkbox", {
+          name: "a.pdf: Alpha Team / Invoices / 2024",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+
+    // Corner header: every file to every folder.
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "Assign every file to every folder",
+      }),
+    );
+    for (const name of [
+      "b.pdf: Alpha Team / Invoices / 2024",
+      "b.pdf: Beta Team / Legal / Contracts",
+    ]) {
+      expect(
+        screen
+          .getByRole("checkbox", { name })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    }
+    // Toggling the corner off clears the grid.
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "Assign every file to every folder",
+      }),
+    );
+    expect(
+      screen
+        .getByRole("checkbox", {
+          name: "a.pdf: Alpha Team / Invoices / 2024",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
+  it("shows per-file progress and retry/remove actions in the grid", async () => {
+    const user = userEvent.setup();
+    const { onRetryItem, onRemoveItem } = renderComposer({
+      items: [
+        item({ id: "u1", name: "a.pdf", phase: "uploading", progress: 0.5 }),
+        item({
+          id: "e1",
+          name: "bad.pdf",
+          phase: "error",
+          error: {
+            code: "upload_failed",
+            message: "The upload failed.",
+            retryable: true,
+          },
+        }),
+      ],
+    });
+    const bar = screen.getByRole("progressbar");
+    expect(bar.getAttribute("aria-valuenow")).toBe("50");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "The upload failed.",
+    );
+    await user.click(screen.getByRole("button", { name: "Retry bad.pdf" }));
+    expect(onRetryItem).toHaveBeenCalledWith("e1");
+    await user.click(screen.getByRole("button", { name: "Remove a.pdf" }));
+    expect(onRemoveItem).toHaveBeenCalledWith("u1");
   });
 
   it("keeps Submit disabled while a file is uploading", async () => {
