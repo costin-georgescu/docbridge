@@ -1,0 +1,15 @@
+# Perf-run override for TDD 5.3: scales the api tier the way the Fargate
+# service would in staging (submit latency is Node-CPU-bound, so capacity
+# tracks replicas). The host port is removed — extra replicas can't share
+# it — and k6 reaches api:3000 over the compose network, where Docker DNS
+# round-robins connections across replicas.
+#
+#   docker compose -f docker-compose.yml -f docker/compose.perf.yml up -d
+#   (restore afterwards with plain `docker compose up -d`)
+#
+# Requires Docker Compose >= v2.24 for the !reset tag.
+services:
+  api:
+    ports: !reset []
+    deploy:
+      replicas: 4

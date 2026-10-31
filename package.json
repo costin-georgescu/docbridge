@@ -21,6 +21,10 @@
     "db:seed": "node --env-file=.env --import tsx scripts/seed.ts",
     "e2e": "pnpm --filter @docbridge/e2e test",
     "e2e:install": "pnpm --filter @docbridge/e2e install-browsers",
+    "perf:seed": "node --env-file=.env --import tsx tests/perf/seed.ts",
+    "perf:clean": "node --env-file=.env --import tsx tests/perf/seed.ts --cleanup",
+    "perf:jobs": "docker run --rm -i --network docbridge_default -v \"$PWD/tests/perf:/perf:ro\" grafana/k6:2.3.0 run /perf/submit-job.js",
+    "perf:tree": "docker run --rm -i --network docbridge_default -v \"$PWD/tests/perf:/perf:ro\" grafana/k6:2.3.0 run /perf/tree.js",
     "auth:keygen": "node scripts/gen-signing-key.mjs"
   },
   "devDependencies": {
@@ -40,6 +44,7 @@
   },
   "dependencies": {
     "@docbridge/db-auth": "workspace:*",
+    "@docbridge/db-docbridge": "workspace:*",
     "@docbridge/db-platform": "workspace:*"
   }
 }

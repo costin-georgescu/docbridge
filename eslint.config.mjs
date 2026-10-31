@@ -26,5 +26,11 @@ export default tseslint.config(
       globals: { ...globals.browser, __API_BASE__: "readonly" },
     },
   },
+  {
+    files: ["tests/perf/**/*.js"],
+    languageOptions: {
+      globals: { open: "readonly", __ENV: "readonly" },
+    },
+  },
   prettier,
 );

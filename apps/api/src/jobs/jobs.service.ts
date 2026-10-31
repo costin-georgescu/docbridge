@@ -114,21 +114,39 @@ export class JobsService {
         if (claimed.length !== fileIds.length) {
           throw new ClaimMismatch();
         }
-        await tx.task.createMany({
-          data: mappings.flatMap((m) =>
-            m.folderIds.map((folderId) => {
-              const dest = byFolder.get(folderId)!;
-              return {
-                jobId,
-                stagedFileId: m.fileId,
-                destinationFolderId: folderId,
-                destinationTeamId: dest.teamId,
-                destinationPath: dest.path,
-                status: "pending" as const,
-              };
-            }),
-          ),
-        });
+        // One INSERT over unnested column arrays: at the 2,000-task limit a
+        // per-row createMany costs far more client CPU than a single
+        // statement the server expands itself.
+        const taskIds: string[] = [];
+        const taskFileIds: string[] = [];
+        const taskFolderIds: string[] = [];
+        const taskTeamIds: string[] = [];
+        const taskPaths: string[] = [];
+        for (const m of mappings) {
+          for (const folderId of m.folderIds) {
+            const dest = byFolder.get(folderId)!;
+            taskIds.push(uuidv7());
+            taskFileIds.push(m.fileId);
+            taskFolderIds.push(folderId);
+            taskTeamIds.push(dest.teamId);
+            taskPaths.push(dest.path);
+          }
+        }
+        await tx.$executeRaw`
+          INSERT INTO tasks (
+            id, job_id, staged_file_id, destination_folder_id,
+            destination_team_id, destination_path, status, created_at
+          )
+          SELECT
+            t.id, ${jobId}::uuid, t.staged_file_id, t.folder_id,
+            t.team_id, t.path, 'pending'::task_status, now()
+          FROM unnest(
+            ${taskIds}::uuid[],
+            ${taskFileIds}::uuid[],
+            ${taskFolderIds}::uuid[],
+            ${taskTeamIds}::uuid[],
+            ${taskPaths}::text[]
+          ) AS t(id, staged_file_id, folder_id, team_id, path)`;
       });
     } catch (err) {
       if (err instanceof ClaimMismatch) {

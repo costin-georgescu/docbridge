@@ -8,3 +8,5 @@ coverage/
 packages/db-*/src/generated/
 cdk.out
 cdk.context.json
+tests/perf/manifest.json
+tests/perf/chunks.txt

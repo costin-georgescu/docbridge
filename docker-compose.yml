@@ -34,6 +34,8 @@ x-app: &app
 services:
   postgres:
     image: postgres:17
+    # Headroom for the sum of per-service connection_limit pools (TDD 5.3).
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_PASSWORD: postgres
     ports:
@@ -67,7 +69,7 @@ services:
     command: pnpm --filter @docbridge/api dev
     environment:
       PORT: "3000"
-      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge
+      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge?connection_limit=16
       AUTH_INTERNAL_URL: http://auth:3001
       PLATFORM_INTERNAL_URL: http://platform:3002
       S3_PRESIGN_ENDPOINT_URL: http://localhost:4566
@@ -79,7 +81,7 @@ services:
     command: pnpm --filter @docbridge/auth dev
     environment:
       PORT: "3001"
-      DATABASE_URL: postgresql://auth_app:auth_app@postgres:5432/auth
+      DATABASE_URL: postgresql://auth_app:auth_app@postgres:5432/auth?connection_limit=10
     ports:
       - "3001:3001"
 
@@ -88,7 +90,7 @@ services:
     command: pnpm --filter @docbridge/platform dev
     environment:
       PORT: "3002"
-      DATABASE_URL: postgresql://platform_app:platform_app@postgres:5432/platform
+      DATABASE_URL: postgresql://platform_app:platform_app@postgres:5432/platform?connection_limit=20
       AUTH_INTERNAL_URL: http://auth:3001
     ports:
       - "3002:3002"
@@ -97,13 +99,13 @@ services:
     <<: *app
     command: pnpm --filter @docbridge/dispatcher dev
     environment:
-      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge
+      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge?connection_limit=10
 
   worker:
     <<: *app
     command: pnpm --filter @docbridge/worker dev
     environment:
-      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge
+      DATABASE_URL: postgresql://docbridge_app:docbridge_app@postgres:5432/docbridge?connection_limit=10
       AUTH_INTERNAL_URL: http://auth:3001
       PLATFORM_INTERNAL_URL: http://platform:3002
 

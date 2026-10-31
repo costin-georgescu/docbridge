@@ -169,6 +169,9 @@ importers:
       '@docbridge/db-auth':
         specifier: workspace:*
         version: link:packages/db-auth
+      '@docbridge/db-docbridge':
+        specifier: workspace:*
+        version: link:packages/db-docbridge
       '@docbridge/db-platform':
         specifier: workspace:*
         version: link:packages/db-platform

@@ -102,6 +102,7 @@ model Task {
 
   @@unique([jobId, stagedFileId, destinationFolderId])
   @@index([jobId, status])
+  @@index([stagedFileId])
   @@map("tasks")
 }
 
