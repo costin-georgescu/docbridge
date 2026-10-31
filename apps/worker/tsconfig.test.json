@@ -5,6 +5,8 @@
     "module": "CommonJS",
     "ignoreDeprecations": "6.0",
     "allowJs": true,
-    "types": ["node", "jest"]
-  }
+    "types": ["node", "jest"],
+    "rootDir": "../.."
+  },
+  "include": ["src", "test", "../platform/src", "../platform/test"]
 }

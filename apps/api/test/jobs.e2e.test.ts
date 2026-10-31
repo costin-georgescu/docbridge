@@ -315,6 +315,75 @@ run("jobs e2e", () => {
     expect(claimed.every((f) => f.jobId === jobId)).toBe(true);
   });
 
+  it("commits 2,000 tasks atomically at the job limits", async () => {
+    const token = await userToken(OWNER_A);
+    const fileIds = [] as string[];
+    for (let i = 0; i < 100; i++) {
+      fileIds.push(await seedStagedFile(OWNER_A));
+    }
+    const folderIds = Array.from({ length: 20 }, () => randomUUID());
+    platformResolve = resolvingAll(
+      Object.fromEntries(
+        folderIds.map((id, i) => [
+          id,
+          { teamId: i % 2 ? TEAM_1 : TEAM_2, path: `Team/B/F${i}` },
+        ]),
+      ),
+    );
+
+    const res = await api()
+      .post("/api/jobs")
+      .set(bearer(token))
+      .send({
+        mappings: fileIds.map((fileId) => ({ fileId, folderIds })),
+      })
+      .expect(202);
+
+    const job = await db.job.findUniqueOrThrow({
+      where: { id: res.body.jobId },
+    });
+    expect(job).toMatchObject({ filesCount: 100, tasksCount: 2000 });
+    expect(await db.task.count({ where: { jobId: job.id } })).toBe(2000);
+    expect(
+      await db.stagedFile.count({
+        where: { id: { in: fileIds }, jobId: job.id },
+      }),
+    ).toBe(100);
+  }, 60_000);
+
+  it("rolls back a 2,000-task submission leaving no rows", async () => {
+    const token = await userToken(OWNER_A);
+    const fileIds = [] as string[];
+    for (let i = 0; i < 99; i++) {
+      fileIds.push(await seedStagedFile(OWNER_A));
+    }
+    fileIds.push(
+      await seedStagedFile(OWNER_A, {
+        status: "pending_upload",
+        stagedAt: null,
+      }),
+    );
+    const folderIds = Array.from({ length: 20 }, () => randomUUID());
+    platformResolve = resolvingAll(
+      Object.fromEntries(
+        folderIds.map((id) => [
+          id,
+          { teamId: TEAM_1, path: "Team1/B/F" },
+        ]),
+      ),
+    );
+
+    const res = await api()
+      .post("/api/jobs")
+      .set(bearer(token))
+      .send({
+        mappings: fileIds.map((fileId) => ({ fileId, folderIds })),
+      })
+      .expect(409);
+    expect(res.body.error.code).toBe("file_not_staged");
+    await expectNothingCommitted(...fileIds);
+  }, 60_000);
+
   it("returns 409 file_already_submitted on a same-user double submit", async () => {
     const token = await userToken(OWNER_A);
     const fileId = await seedStagedFile(OWNER_A);

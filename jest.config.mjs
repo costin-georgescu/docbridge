@@ -91,6 +91,8 @@ export default {
         "^@docbridge/config$": "<rootDir>/../../packages/config/src/index.ts",
         "^@docbridge/db-docbridge$":
           "<rootDir>/../../packages/db-docbridge/dist/index.js",
+        "^@docbridge/db-platform$":
+          "<rootDir>/../../packages/db-platform/dist/index.js",
         "^@docbridge/storage$": "<rootDir>/../../packages/storage/src/index.ts",
       },
       setupFiles: ["<rootDir>/test/setup.ts"],

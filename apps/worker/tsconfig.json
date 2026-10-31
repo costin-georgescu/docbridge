@@ -5,6 +5,7 @@
     "outDir": "dist"
   },
   "include": ["src", "test"],
+  "exclude": ["test/delivery-platform.e2e.test.ts"],
   "references": [
     {
       "path": "../../packages/contracts"
