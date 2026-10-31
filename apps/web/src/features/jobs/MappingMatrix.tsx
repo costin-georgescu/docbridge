@@ -38,14 +38,7 @@ export function MappingMatrix({
   onSetColumn: (folderId: string, assigned: boolean) => void;
   onRemoveFolder: (folderId: string) => void;
 }) {
-  if (folders.length === 0) {
-    return (
-      <p className="text-sm text-muted">
-        Select destination folders from the tree.
-      </p>
-    );
-  }
-  if (rows.length === 0) {
+  if (folders.length === 0 || rows.length === 0) {
     return null;
   }
   return (

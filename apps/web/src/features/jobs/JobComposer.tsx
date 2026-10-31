@@ -72,8 +72,11 @@ export function JobComposer({
   };
 
   return (
-    <div className="space-y-4">
-      <Card title="Destinations">
+    <Card
+      title="Destinations & mapping"
+      className="flex flex-col lg:h-[calc(100vh-14rem)] lg:min-h-[28rem]"
+    >
+      <div className="min-h-0 flex-1">
         <TreeView
           tree={tree}
           selection={{
@@ -82,27 +85,30 @@ export function JobComposer({
             limitReached: state.folderIds.length >= MAX_JOB_FOLDERS,
           }}
         />
-      </Card>
-      <Card title="Mapping">
-        <MappingMatrix
-          rows={summary.rows}
-          folders={folders}
-          onToggleCell={(itemId, folderId) =>
-            change({ type: "toggleCell", itemId, folderId })
-          }
-          onSetColumn={(folderId, assigned) =>
-            change({
-              type: "setColumn",
-              folderId,
-              itemIds: summary.rows.map((r) => r.item.id),
-              assigned,
-            })
-          }
-          onRemoveFolder={(folderId) =>
-            change({ type: "toggleFolder", folderId })
-          }
-        />
-        <div className="mt-4 space-y-2 border-t border-line pt-4">
+      </div>
+      {folders.length > 0 && summary.rows.length > 0 && (
+        <div className="mt-4 max-h-[45%] overflow-auto border-t border-line pt-4">
+          <MappingMatrix
+            rows={summary.rows}
+            folders={folders}
+            onToggleCell={(itemId, folderId) =>
+              change({ type: "toggleCell", itemId, folderId })
+            }
+            onSetColumn={(folderId, assigned) =>
+              change({
+                type: "setColumn",
+                folderId,
+                itemIds: summary.rows.map((r) => r.item.id),
+                assigned,
+              })
+            }
+            onRemoveFolder={(folderId) =>
+              change({ type: "toggleFolder", folderId })
+            }
+          />
+        </div>
+      )}
+      <div className="mt-4 space-y-2 border-t border-line pt-4">
         <p className="text-sm text-ink">
           <span
             className={
@@ -185,10 +191,7 @@ export function JobComposer({
           </div>
         )}
         {genericError && (
-          <p
-            role="alert"
-            className="text-sm text-rose-600 dark:text-rose-300"
-          >
+          <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">
             Submission failed. Try again.
           </p>
         )}
@@ -199,8 +202,7 @@ export function JobComposer({
             ))}
           </ul>
         )}
-        </div>
-      </Card>
-    </div>
+      </div>
+    </Card>
   );
 }

@@ -1,7 +1,6 @@
 import { ReactNode, useMemo, useState } from "react";
 import { Checkbox } from "@base-ui-components/react/checkbox";
 import { TreeFolder, TreeResponse } from "@docbridge/contracts";
-import { Button } from "../../components/Button";
 import { Input } from "../../components/Input";
 import { collectExpandableIds, filterTree } from "./filter";
 
@@ -134,87 +133,99 @@ export function TreeView({
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">
-            Filter destinations
-          </span>
-          <Input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Search teams, binders, folders"
-            className="w-72"
-          />
-        </label>
-        <Button
-          variant="secondary"
-          onClick={() => setManualExpanded(new Set(collectExpandableIds(tree)))}
-        >
-          Expand all
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => setManualExpanded(new Set())}
-        >
-          Collapse all
-        </Button>
-        <span className="text-sm text-muted">
-          {counts.teams} teams · {counts.binders} binders · {counts.folders}{" "}
-          folders
-        </span>
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <Input
+        aria-label="Filter destinations"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        placeholder="Search teams, binders, folders"
+      />
       {tree.teams.length === 0 ? (
         <p className="text-sm text-muted">
           No destinations are assigned to your account.
         </p>
-      ) : visible.teams.length === 0 ? (
-        <p className="text-sm text-muted">No matches.</p>
       ) : (
-        <ul role="tree" className="space-y-1">
-          {visible.teams.map((team) => {
-            const teamExpanded = isExpanded(team.id);
-            return (
-              <li key={team.id} role="treeitem" aria-expanded={teamExpanded}>
-                <button
-                  type="button"
-                  onClick={() => toggle(team.id)}
-                  className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-sm font-semibold text-ink transition-colors hover:bg-ink/5"
-                >
-                  <Chevron expanded={teamExpanded} />
-                  {team.name}
-                </button>
-                {teamExpanded && (
-                  <ul
-                    role="group"
-                    className="ml-[22px] space-y-1 border-l border-line pl-2"
-                  >
-                    {team.binders.map((binder) => {
-                      const binderExpanded = isExpanded(binder.id);
-                      return (
-                        <li
-                          key={binder.id}
-                          role="treeitem"
-                          aria-expanded={binderExpanded}
+        <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-line bg-ink/[0.02]">
+          <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-1.5">
+            <span className="text-xs text-muted">
+              {counts.teams} teams · {counts.binders} binders · {counts.folders}{" "}
+              folders
+            </span>
+            <span className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setManualExpanded(new Set(collectExpandableIds(tree)))
+                }
+                className="text-xs font-medium text-muted transition-colors hover:text-ink"
+              >
+                Expand all
+              </button>
+              <button
+                type="button"
+                onClick={() => setManualExpanded(new Set())}
+                className="text-xs font-medium text-muted transition-colors hover:text-ink"
+              >
+                Collapse all
+              </button>
+            </span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-1">
+            {visible.teams.length === 0 ? (
+              <p className="px-2 py-1 text-sm text-muted">No matches.</p>
+            ) : (
+              <ul role="tree" className="space-y-1">
+                {visible.teams.map((team) => {
+                  const teamExpanded = isExpanded(team.id);
+                  return (
+                    <li
+                      key={team.id}
+                      role="treeitem"
+                      aria-expanded={teamExpanded}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggle(team.id)}
+                        className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-sm font-semibold text-ink transition-colors hover:bg-ink/5"
+                      >
+                        <Chevron expanded={teamExpanded} />
+                        {team.name}
+                      </button>
+                      {teamExpanded && (
+                        <ul
+                          role="group"
+                          className="ml-[22px] space-y-1 border-l border-line pl-2"
                         >
-                          <button
-                            type="button"
-                            onClick={() => toggle(binder.id)}
-                            className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-sm font-medium text-ink transition-colors hover:bg-ink/5"
-                          >
-                            <Chevron expanded={binderExpanded} />
-                            {binder.name}
-                          </button>
-                          {binderExpanded && renderFolders(binder.folders)}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                          {team.binders.map((binder) => {
+                            const binderExpanded = isExpanded(binder.id);
+                            return (
+                              <li
+                                key={binder.id}
+                                role="treeitem"
+                                aria-expanded={binderExpanded}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggle(binder.id)}
+                                  className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-sm font-medium text-ink transition-colors hover:bg-ink/5"
+                                >
+                                  <Chevron expanded={binderExpanded} />
+                                  {binder.name}
+                                </button>
+                                {binderExpanded &&
+                                  renderFolders(binder.folders)}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

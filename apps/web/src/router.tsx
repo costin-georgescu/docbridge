@@ -94,7 +94,7 @@ function Layout() {
           )}
         </div>
       </div>
-      <main className="mx-auto max-w-5xl px-6 pb-16 pt-24">
+      <main className="mx-auto max-w-7xl px-6 pb-16 pt-24">
         <Outlet />
       </main>
     </div>
