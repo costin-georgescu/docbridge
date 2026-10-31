@@ -17,6 +17,7 @@ Never commit or push. Leave every change uncommitted in the working tree; the us
 ## Current constraints
 
 - No AWS credentials yet: everything runs against LocalStack via docker compose. CDK can be written and `cdk synth`'d but not deployed.
+- Local Postgres runs with `full_page_writes=off` + `max_wal_size=4GB` (docker-compose `command`) to cut disk-write churn during perf/e2e runs; a perf cycle churns ~4M task rows and previously drove ~60 GB/hr of VM disk writes. Commit semantics are untouched so TDD 5.3 latency numbers stay honest — `fsync=off`/`synchronous_commit=off` were deliberately not used. DEPLOYMENT: do not carry these flags to RDS/staging/prod — full-page images are required for crash recovery and PITR; use stock durability settings there.
 
 ## Verification
 

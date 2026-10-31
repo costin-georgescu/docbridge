@@ -36,7 +36,15 @@ services:
   postgres:
     image: postgres:17
     # Headroom for the sum of per-service connection_limit pools (TDD 5.3).
-    command: ["postgres", "-c", "max_connections=200"]
+    # LOCAL DEV ONLY — do not carry to RDS/staging: full_page_writes=off
+    # skips page-image WAL logging (the bulk of local write churn during
+    # perf/e2e runs); the cluster is disposable (down -v + migrate + seed).
+    command: [
+      "postgres",
+      "-c", "max_connections=200",
+      "-c", "full_page_writes=off",
+      "-c", "max_wal_size=4GB",
+    ]
     environment:
       POSTGRES_PASSWORD: postgres
     ports:
