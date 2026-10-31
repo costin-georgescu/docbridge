@@ -191,9 +191,7 @@ describe("ALB rules", () => {
         r as {
           Properties: { Actions: { TargetGroupArn?: { Ref: string } }[] };
         }
-      ).Properties.Actions.some(
-        (a) => a.TargetGroupArn?.Ref === tgLogicalId,
-      ),
+      ).Properties.Actions.some((a) => a.TargetGroupArn?.Ref === tgLogicalId),
     );
     expect(platformRules).toHaveLength(1);
     const conditions = (
@@ -271,6 +269,73 @@ describe("task roles", () => {
     const acts = actions(policiesFor("TaskRoleauth"));
     expect(acts.filter((a) => a?.startsWith("sqs:"))).toHaveLength(0);
     expect(acts.filter((a) => a?.startsWith("s3:"))).toHaveLength(0);
+  });
+});
+
+describe("CloudFront response headers", () => {
+  it("sets the TDD 5.5 security headers on the web distribution", () => {
+    template.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
+      ResponseHeadersPolicyConfig: {
+        SecurityHeadersConfig: {
+          StrictTransportSecurity: {
+            AccessControlMaxAgeSec: 31536000,
+            IncludeSubdomains: true,
+            Preload: true,
+            Override: true,
+          },
+          ContentTypeOptions: { Override: true },
+          FrameOptions: { FrameOption: "DENY", Override: true },
+          ReferrerPolicy: {
+            ReferrerPolicy: "strict-origin-when-cross-origin",
+            Override: true,
+          },
+          ContentSecurityPolicy: {
+            ContentSecurityPolicy: Match.stringLikeRegexp(
+              "connect-src 'self' https://api\\.docbridge\\.example\\.com",
+            ),
+            Override: true,
+          },
+        },
+      },
+    });
+  });
+
+  it("locks down scripts and framing via CSP", () => {
+    const policies = template.findResources(
+      "AWS::CloudFront::ResponseHeadersPolicy",
+    );
+    const csp = Object.values(policies)
+      .map(
+        (p) =>
+          (
+            p as {
+              Properties: {
+                ResponseHeadersPolicyConfig: {
+                  SecurityHeadersConfig: {
+                    ContentSecurityPolicy: { ContentSecurityPolicy: string };
+                  };
+                };
+              };
+            }
+          ).Properties.ResponseHeadersPolicyConfig.SecurityHeadersConfig
+            .ContentSecurityPolicy.ContentSecurityPolicy,
+      )
+      .join("\n");
+    for (const directive of [
+      "default-src 'self'",
+      "script-src 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "base-uri 'none'",
+      "form-action 'self'",
+      "upgrade-insecure-requests",
+    ]) {
+      expect(csp).toContain(directive);
+    }
+    // Presigned staged uploads go straight from the browser to S3,
+    // scoped to the deployment region — no global S3 endpoint.
+    expect(csp).toContain("https://*.s3.eu-central-1.amazonaws.com");
+    expect(csp).not.toContain("https://*.s3.amazonaws.com");
   });
 });
 

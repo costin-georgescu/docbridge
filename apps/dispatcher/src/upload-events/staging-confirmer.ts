@@ -26,9 +26,8 @@ export class StagingConfirmer {
     });
     if (!record) return "not_found";
     if (key !== undefined && key !== record.storageKey) {
-      this.logger.warn(
-        `file ${fileId}: event key ${key} != record key ${record.storageKey}`,
-      );
+      // TDD 5.5: no object keys in logs — the file id identifies the row.
+      this.logger.warn(`file ${fileId}: staged key mismatch`);
       return "key_mismatch";
     }
     if (record.status !== "pending_upload") return "already_staged";

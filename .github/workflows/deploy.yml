@@ -95,7 +95,18 @@ jobs:
               --force-new-deployment >/dev/null
           done
 
+      # The SPA calls api.<domain> for /api, /auth and /tree; without this
+      # the bundle defaults to same-origin app.<domain>, which CloudFront
+      # serves from S3 only.
+      - name: Resolve api origin for the web build
+        id: api_base
+        working-directory: infra
+        run: |
+          DOMAIN=$(jq -r '.context.environments["${{ steps.env_name.outputs.name }}"].domainName' cdk.json)
+          echo "api_base=https://api.$DOMAIN" >> "$GITHUB_OUTPUT"
       - name: Publish web bundle
+        env:
+          VITE_API_BASE_URL: ${{ steps.api_base.outputs.api_base }}
         run: pnpm --filter @docbridge/web build
       - name: Sync web bundle and invalidate CloudFront
         working-directory: infra

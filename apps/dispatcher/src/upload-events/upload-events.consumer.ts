@@ -81,9 +81,8 @@ export class UploadEventsConsumer
       parsed = null;
     }
     if (!parsed?.success) {
-      this.logger.error(
-        `unparseable SQS message ${msg.MessageId}: ${msg.Body}`,
-      );
+      // TDD 5.5: no raw bodies in logs — an event body carries object keys.
+      this.logger.error(`unparseable SQS message ${msg.MessageId}`);
       return false;
     }
     const body = parsed.data;
@@ -101,7 +100,9 @@ export class UploadEventsConsumer
       }
       const ids = fileIdFromStagedKey(record.s3.object.key);
       if (!ids) {
-        this.logger.warn(`unparseable object key ${record.s3.object.key}`);
+        // TDD 5.5: an unparseable key is not known to be id-shaped, so only
+        // the message id is safe to log.
+        this.logger.warn(`unparseable object key in message ${msg.MessageId}`);
         continue;
       }
       try {

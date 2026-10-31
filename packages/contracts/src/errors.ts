@@ -4,6 +4,7 @@ export const ErrorCode = z.enum([
   "invalid_credentials",
   "account_disabled",
   "too_many_attempts",
+  "too_many_requests",
   "invalid_refresh",
   "unsupported_file_type",
   "file_too_large",

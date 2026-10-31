@@ -23,12 +23,21 @@ import {
   JobListResponse,
   type UserClaims,
 } from "@docbridge/contracts";
+import { RateLimiterRegistry } from "@docbridge/rate-limit";
+import { AppError } from "../common/app-error";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
+import { config } from "../config";
 import { JobsService } from "./jobs.service";
+
+const MINUTE_MS = 60_000;
 
 @Controller("api/jobs")
 export class JobsController {
-  constructor(@Inject(JobsService) private readonly jobs: JobsService) {}
+  constructor(
+    @Inject(JobsService) private readonly jobs: JobsService,
+    @Inject(RateLimiterRegistry)
+    private readonly rateLimit: RateLimiterRegistry,
+  ) {}
 
   @Post()
   @HttpCode(202)
@@ -38,6 +47,14 @@ export class JobsController {
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(CreateJobRequest)) body: CreateJobRequest,
   ): Promise<CreateJobResponse> {
+    if (
+      !this.rateLimit.hit("jobs:create", claims.sub, {
+        limit: config.RATE_LIMIT_JOBS_PER_MIN,
+        windowMs: MINUTE_MS,
+      })
+    ) {
+      throw new AppError(429, "too_many_requests", "Too many requests");
+    }
     return this.jobs.createJob(claims, bearerToken(req), body);
   }
 

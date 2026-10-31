@@ -9,3 +9,5 @@ process.env.STAGING_BUCKET ??= "docbridge-staging";
 process.env.AWS_ENDPOINT_URL ??= "http://localhost:4566";
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
+process.env.RATE_LIMIT_JOBS_PER_MIN ??= "10000";
+process.env.RATE_LIMIT_UPLOADS_PER_MIN ??= "10000";

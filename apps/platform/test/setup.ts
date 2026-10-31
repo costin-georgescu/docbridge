@@ -8,3 +8,4 @@ process.env.DATABASE_URL ??=
   process.env.PLATFORM_TEST_DATABASE_URL ??
   "postgresql://platform_app:platform_app@localhost:5432/platform";
 process.env.AUTH_INTERNAL_URL ??= "http://auth.test";
+process.env.RATE_LIMIT_TREE_PER_MIN ??= "10000";

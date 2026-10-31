@@ -11,6 +11,7 @@
     { "path": "packages/auth-core" },
     { "path": "packages/config" },
     { "path": "packages/storage" },
+    { "path": "packages/rate-limit" },
     { "path": "packages/db-auth" },
     { "path": "packages/db-docbridge" },
     { "path": "packages/db-platform" },

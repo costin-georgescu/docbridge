@@ -18,6 +18,7 @@ COPY packages/db-auth/package.json packages/db-auth/
 COPY packages/db-docbridge/package.json packages/db-docbridge/
 COPY packages/db-platform/package.json packages/db-platform/
 COPY packages/storage/package.json packages/storage/
+COPY packages/rate-limit/package.json packages/rate-limit/
 COPY infra/package.json infra/
 RUN pnpm install --frozen-lockfile
 

@@ -96,9 +96,12 @@ export class HousekeepingSweep
         }),
       );
       const failedKeys = new Set((res.Errors ?? []).map((e) => e.Key));
+      // TDD 5.5: no object keys in logs — translate the failed key back to
+      // its file id; err.Message can echo the key, so only the code is safe.
+      const idByKey = new Map(orphans.map((o) => [o.storage_key, o.id]));
       for (const err of res.Errors ?? []) {
         this.logger.warn(
-          `DeleteObjects failed for ${err.Key}: ${err.Code} ${err.Message}`,
+          `DeleteObjects failed for file ${idByKey.get(err.Key ?? "") ?? "unknown"}: ${err.Code}`,
         );
       }
 

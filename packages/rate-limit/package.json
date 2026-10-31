@@ -1,0 +1,12 @@
+{
+  "name": "@docbridge/rate-limit",
+  "version": "0.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "devDependencies": {
+    "@jest/globals": "30.5.2",
+    "ts-jest": "29.4.15",
+    "typescript": "6.0.3"
+  }
+}

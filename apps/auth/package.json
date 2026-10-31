@@ -11,6 +11,7 @@
     "@docbridge/config": "workspace:*",
     "@docbridge/contracts": "workspace:*",
     "@docbridge/db-auth": "workspace:*",
+    "@docbridge/rate-limit": "workspace:*",
     "@nestjs/common": "12.2.0",
     "@nestjs/core": "12.2.0",
     "@nestjs/platform-express": "12.2.0",

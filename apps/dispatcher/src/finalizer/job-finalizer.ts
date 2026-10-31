@@ -5,7 +5,10 @@ import {
   Logger,
   OnApplicationBootstrap,
 } from "@nestjs/common";
-import { PutObjectTaggingCommand, S3ServiceException } from "@aws-sdk/client-s3";
+import {
+  PutObjectTaggingCommand,
+  S3ServiceException,
+} from "@aws-sdk/client-s3";
 import { PrismaService } from "../prisma/prisma.service";
 import { StagingStorage } from "../storage/staging-storage.service";
 import { sleep } from "../common/sleep";
@@ -20,6 +23,7 @@ interface ClaimedJob {
 }
 
 interface StagedKey {
+  id: string;
   storage_key: string;
 }
 
@@ -108,12 +112,13 @@ export class JobFinalizer
   /** Tags every staged object of the job; false when any call failed. */
   private async tagJob(jobId: string): Promise<boolean> {
     const files = await this.prisma.db.$queryRaw<StagedKey[]>`
-      SELECT storage_key FROM staged_files WHERE job_id = ${jobId}::uuid`;
+      SELECT id, storage_key FROM staged_files WHERE job_id = ${jobId}::uuid`;
 
     let allTagged = true;
     for (let i = 0; i < files.length; i += TAG_CONCURRENCY) {
       await Promise.all(
-        files.slice(i, i + TAG_CONCURRENCY).map(async ({ storage_key }) => {
+        // TDD 5.5: logs carry ids, not storage keys.
+        files.slice(i, i + TAG_CONCURRENCY).map(async ({ id, storage_key }) => {
           try {
             await this.storage.s3.send(
               new PutObjectTaggingCommand({
@@ -128,11 +133,11 @@ export class JobFinalizer
               (e.name === "NoSuchKey" || e.$metadata.httpStatusCode === 404)
             ) {
               this.logger.warn(
-                `job ${jobId}: staged object ${storage_key} is gone, nothing to tag`,
+                `job ${jobId}: staged object for file ${id} is gone, nothing to tag`,
               );
             } else {
               this.logger.warn(
-                `job ${jobId}: tagging ${storage_key} failed`,
+                `job ${jobId}: tagging file ${id} failed`,
                 e as Error,
               );
               allTagged = false;

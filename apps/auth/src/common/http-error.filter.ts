@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Response } from "express";
 import { AppError } from "./app-error";
+import { scrubForLog } from "./scrub";
 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
@@ -55,7 +56,11 @@ export class HttpErrorFilter implements ExceptionFilter {
     }
     this.logger.error(
       "Unhandled exception",
-      exception instanceof Error ? exception.stack : String(exception),
+      scrubForLog(
+        exception instanceof Error
+          ? (exception.stack ?? exception.message)
+          : String(exception),
+      ),
     );
     res.status(500).json({
       error: {

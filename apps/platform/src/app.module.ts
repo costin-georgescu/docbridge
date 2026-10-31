@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthCoreModule } from "@docbridge/auth-core";
+import { RateLimiterRegistry } from "@docbridge/rate-limit";
 import { AppController } from "./app.controller";
 import { jwksUrl } from "./config";
 import { AdminController } from "./admin/admin.controller";
@@ -25,6 +26,7 @@ import { TreeService } from "./tree/tree.service";
   providers: [
     PrismaService,
     PlatformStorage,
+    RateLimiterRegistry,
     TreeService,
     FoldersService,
     DocumentsService,

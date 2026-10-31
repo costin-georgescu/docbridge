@@ -16,6 +16,7 @@ import {
   ServiceTokenRequest,
   TokenResponse,
 } from "@docbridge/contracts";
+import { RateLimiterRegistry } from "@docbridge/rate-limit";
 import {
   ACCESS_TOKEN_TTL_S,
   REFRESH_COOKIE,
@@ -39,7 +40,15 @@ export class AuthController {
     private readonly throttle: LoginThrottleService,
     @Inject(SigningKeyService)
     private readonly signingKey: SigningKeyService,
+    @Inject(RateLimiterRegistry)
+    private readonly rateLimit: RateLimiterRegistry,
   ) {}
+
+  private checkRateLimit(bucket: string, ip: string, limit: number): void {
+    if (!this.rateLimit.hit(bucket, ip, { limit, windowMs: 60_000 })) {
+      throw new AppError(429, "too_many_requests", "Too many requests");
+    }
+  }
 
   private setRefreshCookie(res: Response, raw: string): void {
     res.cookie(REFRESH_COOKIE, raw, {
@@ -79,6 +88,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<TokenResponse> {
+    this.checkRateLimit(
+      "session",
+      req.ip ?? "",
+      config.RATE_LIMIT_SESSION_PER_MIN,
+    );
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     if (!raw) {
       throw new AppError(401, "invalid_refresh", "Invalid refresh token");
@@ -99,6 +113,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
+    this.checkRateLimit(
+      "session",
+      req.ip ?? "",
+      config.RATE_LIMIT_SESSION_PER_MIN,
+    );
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     if (raw) {
       await this.auth.logout(raw);
@@ -117,7 +136,13 @@ export class AuthController {
   async serviceToken(
     @Body(new ZodValidationPipe(ServiceTokenRequest))
     body: ServiceTokenRequest,
+    @Ip() ip: string,
   ): Promise<TokenResponse> {
+    this.checkRateLimit(
+      "serviceToken",
+      ip ?? "",
+      config.RATE_LIMIT_SERVICE_TOKEN_PER_MIN,
+    );
     const accessToken = await this.auth.serviceToken(
       body.clientId,
       body.clientSecret,

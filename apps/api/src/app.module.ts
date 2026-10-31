@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthCoreModule } from "@docbridge/auth-core";
+import { RateLimiterRegistry } from "@docbridge/rate-limit";
 import { AppController } from "./app.controller";
 import { jwksUrl, platformUrl } from "./config";
 import { JobsController } from "./jobs/jobs.controller";
@@ -16,6 +17,7 @@ import { UploadsService } from "./uploads/uploads.service";
   providers: [
     PrismaService,
     StagingStorage,
+    RateLimiterRegistry,
     UploadsService,
     JobsService,
     {

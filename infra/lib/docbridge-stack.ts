@@ -564,6 +564,25 @@ export class DocBridgeStack extends cdk.Stack {
       "SecurityHeaders",
       {
         securityHeadersBehavior: {
+          // TDD 5.5: the SPA talks to api.<domain> (ALB) and straight to S3
+          // via presigned URLs; everything else stays same-origin. Verify
+          // in staging before production (5.4).
+          contentSecurityPolicy: {
+            contentSecurityPolicy: [
+              "default-src 'self'",
+              "script-src 'self'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data:",
+              "font-src 'self' data:",
+              `connect-src 'self' https://api.${domain} https://*.s3.${config.region}.amazonaws.com`,
+              "object-src 'none'",
+              "base-uri 'none'",
+              "form-action 'self'",
+              "frame-ancestors 'none'",
+              "upgrade-insecure-requests",
+            ].join("; "),
+            override: true,
+          },
           strictTransportSecurity: {
             accessControlMaxAge: cdk.Duration.days(365),
             includeSubdomains: true,
@@ -580,6 +599,15 @@ export class DocBridgeStack extends cdk.Stack {
               cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
             override: true,
           },
+        },
+        customHeadersBehavior: {
+          customHeaders: [
+            {
+              header: "Permissions-Policy",
+              value: "camera=(), microphone=(), geolocation=()",
+              override: true,
+            },
+          ],
         },
       },
     );

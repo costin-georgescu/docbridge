@@ -17,6 +17,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
+      # TDD 5.5: dependency audit gate — fail on high/critical findings.
+      - run: pnpm audit --audit-level=high
       - run: pnpm --filter @docbridge/infra synth
       - run: pnpm lint
       - run: pnpm typecheck

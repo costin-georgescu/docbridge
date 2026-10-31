@@ -15,6 +15,7 @@ x-src-volumes: &src-volumes
   - ./packages/auth-core/src:/workspace/packages/auth-core/src
   - ./packages/config/src:/workspace/packages/config/src
   - ./packages/storage/src:/workspace/packages/storage/src
+  - ./packages/rate-limit/src:/workspace/packages/rate-limit/src
   - ./packages/db-auth/src:/workspace/packages/db-auth/src
   - ./packages/db-docbridge/src:/workspace/packages/db-docbridge/src
   - ./packages/db-platform/src:/workspace/packages/db-platform/src
@@ -73,6 +74,10 @@ services:
       AUTH_INTERNAL_URL: http://auth:3001
       PLATFORM_INTERNAL_URL: http://platform:3002
       S3_PRESIGN_ENDPOINT_URL: http://localhost:4566
+      # Disabled locally: the k6 perf run fires thousands of submissions
+      # from one fixture user (tests/perf).
+      RATE_LIMIT_JOBS_PER_MIN: "0"
+      RATE_LIMIT_UPLOADS_PER_MIN: "0"
     ports:
       - "3000:3000"
 
@@ -92,6 +97,9 @@ services:
       PORT: "3002"
       DATABASE_URL: postgresql://platform_app:platform_app@postgres:5432/platform?connection_limit=20
       AUTH_INTERNAL_URL: http://auth:3001
+      # Disabled locally: the k6 tree run hammers GET /tree from one
+      # container IP (tests/perf).
+      RATE_LIMIT_TREE_PER_MIN: "0"
     ports:
       - "3002:3002"
 

@@ -39,6 +39,13 @@ export default {
       transform: { "^.+\\.tsx?$": tsTransform },
     },
     {
+      displayName: "rate-limit",
+      rootDir: "packages/rate-limit",
+      testEnvironment: "node",
+      testMatch: ["**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+    },
+    {
       displayName: "infra",
       rootDir: "infra",
       testEnvironment: "node",
@@ -60,6 +67,8 @@ export default {
         "^@docbridge/db-docbridge$":
           "<rootDir>/../../packages/db-docbridge/dist/index.js",
         "^@docbridge/storage$": "<rootDir>/../../packages/storage/src/index.ts",
+        "^@docbridge/rate-limit$":
+          "<rootDir>/../../packages/rate-limit/src/index.ts",
       },
       setupFiles: ["<rootDir>/test/setup.ts"],
     },
@@ -109,6 +118,8 @@ export default {
         "^@docbridge/config$": "<rootDir>/../../packages/config/src/index.ts",
         "^@docbridge/db-auth$":
           "<rootDir>/../../packages/db-auth/dist/index.js",
+        "^@docbridge/rate-limit$":
+          "<rootDir>/../../packages/rate-limit/src/index.ts",
       },
       setupFiles: ["<rootDir>/test/setup.ts"],
     },
@@ -139,6 +150,8 @@ export default {
         "^@docbridge/db-platform$":
           "<rootDir>/../../packages/db-platform/dist/index.js",
         "^@docbridge/storage$": "<rootDir>/../../packages/storage/src/index.ts",
+        "^@docbridge/rate-limit$":
+          "<rootDir>/../../packages/rate-limit/src/index.ts",
       },
       setupFiles: ["<rootDir>/test/setup.ts"],
     },

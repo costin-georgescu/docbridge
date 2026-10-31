@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { RateLimiterRegistry } from "@docbridge/rate-limit";
 import { AppController } from "./app.controller";
 import { AuthController } from "./auth/auth.controller";
 import { AuthService } from "./auth/auth.service";
@@ -19,6 +20,7 @@ import { TokenService } from "./tokens/token.service";
     TokenService,
     RefreshTokenService,
     LoginThrottleService,
+    RateLimiterRegistry,
     AuthService,
     AdminGuard,
     UsersService,
