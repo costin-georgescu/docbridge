@@ -19,7 +19,7 @@ test("a 100 MB file uploads multipart and is delivered end to end", async ({
 }) => {
   test.setTimeout(480_000);
   await login(page, SEED_USERS.anna.email, SEED_USERS.anna.password);
-  await page.goto("/upload");
+  await page.goto("/");
 
   const partUploads: string[] = [];
   page.on("request", (request) => {

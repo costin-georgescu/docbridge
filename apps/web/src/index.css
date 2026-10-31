@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* DocBridge theme — porcelain light / clinical navy dark, cyan accent. */
+:root {
+  --canvas: #f4f3ef;
+  --surface: #ffffff;
+  --line: #e5e2da;
+  --ink: #101a3c;
+  --muted: #5d6680;
+  --accent: #0b7d92;
+  --accent-fill: #101a3c;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(14 147 167 / 0.12);
+}
+
+[data-theme="dark"] {
+  --canvas: #0a112e;
+  --surface: #131c42;
+  --line: #1d2750;
+  --ink: #eef1fb;
+  --muted: #8b95ba;
+  --accent: #4fd3e4;
+  --accent-fill: #4fd3e4;
+  --accent-ink: #06283a;
+  --accent-soft: rgb(79 211 228 / 0.15);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+}

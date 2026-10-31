@@ -8,8 +8,9 @@ test.describe("flow 1: authentication and destination tree", () => {
   test("anonymous users are redirected to login", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/login\?redirect=/);
+    await expect(page.getByLabel("Email")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Sign in to DocBridge" }),
+      page.getByRole("button", { name: "Sign in", exact: true }),
     ).toBeVisible();
   });
 
@@ -30,7 +31,7 @@ test.describe("flow 1: authentication and destination tree", () => {
     await page.getByLabel("Password").fill(SEED_USERS.anna.password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(
-      page.getByRole("link", { name: "Destinations" }),
+      page.getByRole("link", { name: "Deliver" }),
     ).toBeVisible();
   });
 

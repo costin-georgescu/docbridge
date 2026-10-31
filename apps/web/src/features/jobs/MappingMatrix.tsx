@@ -15,12 +15,12 @@ export interface MappingFolder {
 }
 
 const CHECKBOX_CLASS =
-  "flex h-4 w-4 items-center justify-center rounded border border-gray-300 bg-white data-[checked]:border-blue-600 data-[checked]:bg-blue-600 disabled:opacity-50";
+  "flex h-4 w-4 items-center justify-center rounded border border-line bg-surface data-[checked]:border-accent-fill data-[checked]:bg-accent-fill disabled:opacity-50";
 
 function Cell(props: ComponentProps<typeof Checkbox.Root>) {
   return (
     <Checkbox.Root className={CHECKBOX_CLASS} {...props}>
-      <Checkbox.Indicator className="text-white">✓</Checkbox.Indicator>
+      <Checkbox.Indicator className="text-accent-ink">✓</Checkbox.Indicator>
     </Checkbox.Root>
   );
 }
@@ -40,7 +40,7 @@ export function MappingMatrix({
 }) {
   if (folders.length === 0) {
     return (
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-muted">
         Select destination folders from the tree.
       </p>
     );
@@ -52,7 +52,7 @@ export function MappingMatrix({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-left text-sm">
         <thead>
-          <tr className="border-b border-gray-200 text-gray-500">
+          <tr className="border-b border-line text-muted">
             <th className="py-2 pr-4 font-medium">File</th>
             <th className="py-2 pr-4 font-medium">Destinations</th>
             {folders.map((folder) => (
@@ -68,7 +68,7 @@ export function MappingMatrix({
                     }
                   />
                   <span
-                    className="max-w-32 truncate text-gray-900"
+                    className="max-w-32 truncate text-ink"
                     title={folder.path}
                   >
                     {folder.name}
@@ -77,7 +77,7 @@ export function MappingMatrix({
                     type="button"
                     aria-label={`Remove ${folder.path}`}
                     onClick={() => onRemoveFolder(folder.id)}
-                    className="text-gray-400 hover:text-gray-700"
+                    className="text-muted hover:text-ink"
                   >
                     ×
                   </button>
@@ -90,11 +90,11 @@ export function MappingMatrix({
           {rows.map((row) => (
             <tr
               key={row.item.id}
-              className="border-b border-gray-100 align-top text-gray-900"
+              className="border-b border-line align-top text-ink"
             >
               <td className="py-2 pr-4">
                 <p className="font-medium">{row.item.name}</p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted">
                   {STATUS_LABELS[row.item.phase]}
                 </p>
               </td>
@@ -109,14 +109,14 @@ export function MappingMatrix({
                       <span
                         key={folderId}
                         title={folder.path}
-                        className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700"
+                        className="inline-flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-xs font-medium text-accent"
                       >
                         {folder.name}
                         <button
                           type="button"
                           aria-label={`Remove ${folder.path} from ${row.item.name}`}
                           onClick={() => onToggleCell(row.item.id, folderId)}
-                          className="text-blue-400 hover:text-blue-800"
+                          className="text-accent/60 hover:text-accent"
                         >
                           ×
                         </button>

@@ -10,6 +10,7 @@ import {
 } from "@docbridge/contracts";
 import { ApiError } from "../../lib/api";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { TreeView } from "../tree/TreeView";
 import { UploadItem } from "../uploads/upload-manager";
 import { buildFolderIndex } from "./folder-index";
@@ -72,8 +73,7 @@ export function JobComposer({
 
   return (
     <div className="space-y-4">
-      <section>
-        <h2 className="text-sm font-medium text-gray-900">Destinations</h2>
+      <Card title="Destinations">
         <TreeView
           tree={tree}
           selection={{
@@ -82,9 +82,8 @@ export function JobComposer({
             limitReached: state.folderIds.length >= MAX_JOB_FOLDERS,
           }}
         />
-      </section>
-      <section>
-        <h2 className="text-sm font-medium text-gray-900">Mapping</h2>
+      </Card>
+      <Card title="Mapping">
         <MappingMatrix
           rows={summary.rows}
           folders={folders}
@@ -103,12 +102,13 @@ export function JobComposer({
             change({ type: "toggleFolder", folderId })
           }
         />
-      </section>
-      <div className="space-y-2">
-        <p className="text-sm text-gray-900">
+        <div className="mt-4 space-y-2 border-t border-line pt-4">
+        <p className="text-sm text-ink">
           <span
             className={
-              summary.counts.files > MAX_JOB_FILES ? "text-red-700" : undefined
+              summary.counts.files > MAX_JOB_FILES
+                ? "text-rose-600 dark:text-rose-300"
+                : undefined
             }
           >
             Files {summary.counts.files.toLocaleString("en-US")}/
@@ -118,7 +118,7 @@ export function JobComposer({
           <span
             className={
               summary.counts.folders > MAX_JOB_FOLDERS
-                ? "text-red-700"
+                ? "text-rose-600 dark:text-rose-300"
                 : undefined
             }
           >
@@ -128,7 +128,9 @@ export function JobComposer({
           {" · "}
           <span
             className={
-              summary.counts.tasks > MAX_JOB_TASKS ? "text-red-700" : undefined
+              summary.counts.tasks > MAX_JOB_TASKS
+                ? "text-rose-600 dark:text-rose-300"
+                : undefined
             }
           >
             Tasks {summary.counts.tasks.toLocaleString("en-US")}/
@@ -148,12 +150,18 @@ export function JobComposer({
           {mutation.isPending ? "Submitting…" : "Submit"}
         </Button>
         {submittedJobId !== null && (
-          <p role="status" className="text-sm text-green-700">
+          <p
+            role="status"
+            className="text-sm text-emerald-600 dark:text-emerald-300"
+          >
             Job submitted. {submittedJobId}
           </p>
         )}
         {error !== null && (
-          <div role="alert" className="text-sm text-red-700">
+          <div
+            role="alert"
+            className="text-sm text-rose-600 dark:text-rose-300"
+          >
             <p>{error.message}</p>
             {Array.isArray(error.details.fileIds) && (
               <ul>
@@ -177,18 +185,22 @@ export function JobComposer({
           </div>
         )}
         {genericError && (
-          <p role="alert" className="text-sm text-red-700">
+          <p
+            role="alert"
+            className="text-sm text-rose-600 dark:text-rose-300"
+          >
             Submission failed. Try again.
           </p>
         )}
         {summary.blockers.length > 0 && (
-          <ul className="text-sm text-gray-500">
+          <ul className="text-sm text-muted">
             {summary.blockers.map((blocker) => (
               <li key={blocker}>{blocker}</li>
             ))}
           </ul>
         )}
-      </div>
+        </div>
+      </Card>
     </div>
   );
 }

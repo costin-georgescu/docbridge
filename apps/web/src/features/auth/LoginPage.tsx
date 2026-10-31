@@ -46,13 +46,10 @@ export function LoginPage() {
   };
 
   return (
-    <div className="mx-auto mt-24 w-full max-w-sm rounded-md border border-gray-200 bg-white p-6">
-      <h1 className="mb-4 text-lg font-semibold text-gray-900">
-        Sign in to DocBridge
-      </h1>
+    <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-[0_16px_50px_rgba(16,26,60,0.10)]">
       <form onSubmit={onSubmit} className="space-y-4">
         <label className="block text-sm">
-          <span className="mb-1 block font-medium text-gray-900">Email</span>
+          <span className="mb-1 block font-medium text-ink">Email</span>
           <Input
             type="email"
             required
@@ -62,7 +59,7 @@ export function LoginPage() {
           />
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block font-medium text-gray-900">Password</span>
+          <span className="mb-1 block font-medium text-ink">Password</span>
           <Input
             type="password"
             required
@@ -72,7 +69,7 @@ export function LoginPage() {
           />
         </label>
         {error && (
-          <p className="text-sm text-red-700" role="alert">
+          <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
             {error}
           </p>
         )}

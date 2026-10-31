@@ -19,7 +19,7 @@ test("upload, map, submit, track to completion and download", async ({
 }) => {
   test.setTimeout(300_000);
   await login(page, SEED_USERS.anna.email, SEED_USERS.anna.password);
-  await page.goto("/upload");
+  await page.goto("/");
 
   const pdf = fixture("pdf");
   const png = fixture("png");

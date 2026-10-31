@@ -25,14 +25,14 @@ export function FileDropzone({
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
-      className={`flex flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed px-6 py-10 text-center ${
-        dragging ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-white"
+      className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center ${
+        dragging ? "border-accent bg-accent-soft" : "border-line bg-ink/[0.02]"
       }`}
     >
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-muted">
         Drag and drop files here, or browse to select them.
       </p>
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-muted">
         PDF, DOCX, XLSX, PNG, or JPG up to 1 GiB.
       </p>
       <Button variant="secondary" onClick={() => inputRef.current?.click()}>

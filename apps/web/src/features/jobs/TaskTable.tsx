@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Card } from "../../components/Card";
 import {
   JobFileResponse,
   JobTaskResponse,
@@ -22,20 +23,22 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const STATUS_BADGES: Record<TaskStatus, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
-  failed: "bg-red-100 text-red-700",
+  pending: "bg-ink/8 text-muted",
+  in_progress: "bg-accent-soft text-accent",
+  completed:
+    "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300",
+  failed:
+    "bg-rose-500/10 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300",
 };
 
 export function TaskStatusBadge({ task }: { task: JobTaskResponse }) {
   const retrying = task.status === "pending" && task.attemptCount > 0;
   const badge = retrying
-    ? "bg-amber-100 text-amber-700"
+    ? "bg-amber-500/10 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300"
     : STATUS_BADGES[task.status];
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badge}`}
     >
       {retrying
         ? `Retrying (attempt ${task.attemptCount})`
@@ -46,14 +49,14 @@ export function TaskStatusBadge({ task }: { task: JobTaskResponse }) {
 
 function TaskError({ task }: { task: JobTaskResponse }) {
   if (!task.lastError) {
-    return <span className="text-gray-400">—</span>;
+    return <span className="text-muted/60">—</span>;
   }
   const error = describeTaskError(task.lastError);
   return (
     <div>
-      <p className="text-red-700">{error.title}</p>
+      <p className="text-rose-600 dark:text-rose-300">{error.title}</p>
       {error.detail !== null && (
-        <p className="text-xs text-gray-500">{error.detail}</p>
+        <p className="text-xs text-muted">{error.detail}</p>
       )}
     </div>
   );
@@ -119,7 +122,7 @@ export function TaskTable({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-gray-500">Filter tasks</span>
+        <span className="text-sm text-muted">Filter tasks</span>
         {TASK_FILTERS.map(({ status, label }) => {
           const active = !hidden.has(status);
           return (
@@ -130,8 +133,8 @@ export function TaskTable({
               onClick={() => toggle(status)}
               className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
                 active
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-gray-300 bg-white text-gray-400"
+                  ? "border-accent bg-accent-soft text-accent"
+                  : "border-line bg-surface text-muted"
               }`}
             >
               {label} ({counts[status]})
@@ -140,46 +143,44 @@ export function TaskTable({
         })}
       </div>
       {tasks.length === 0 ? (
-        <p className="text-sm text-gray-500">This job has no tasks.</p>
+        <p className="text-sm text-muted">This job has no tasks.</p>
       ) : groups.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted">
           No tasks match the selected filters.
         </p>
       ) : (
         groups.map(({ file, tasks: fileTasks }) => (
-          <section key={file.id}>
-            <h3 className="text-sm font-medium text-gray-900">
+          <Card key={file.id}>
+            <h3 className="text-sm font-medium text-ink">
               {file.name}{" "}
-              <span className="font-normal text-gray-500">
+              <span className="font-normal text-muted">
                 {humanSize(file.sizeBytes)} · {fileTasks.length}{" "}
                 {fileTasks.length === 1 ? "destination" : "destinations"}
               </span>
             </h3>
-            <table className="mt-1 w-full divide-y divide-gray-200 rounded-md border border-gray-200 bg-white text-sm">
+            <table className="mt-2 w-full divide-y divide-line border-t border-line text-sm">
               <thead>
-                <tr className="text-left text-xs text-gray-500">
-                  <th className="px-3 py-2 font-medium">Destination</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Last error</th>
+                <tr className="text-left text-xs text-muted">
+                  <th className="py-2 font-medium">Destination</th>
+                  <th className="py-2 font-medium">Status</th>
+                  <th className="py-2 font-medium">Last error</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {fileTasks.map((task) => (
                   <tr key={task.id}>
-                    <td className="px-3 py-2 text-gray-900">
-                      {task.destination.path}
-                    </td>
-                    <td className="px-3 py-2">
+                    <td className="py-2 text-ink">{task.destination.path}</td>
+                    <td className="py-2">
                       <TaskStatusBadge task={task} />
                     </td>
-                    <td className="px-3 py-2 text-xs">
+                    <td className="py-2 text-xs">
                       <TaskError task={task} />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </section>
+          </Card>
         ))
       )}
     </div>

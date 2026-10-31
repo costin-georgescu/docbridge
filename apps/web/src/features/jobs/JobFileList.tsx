@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { JobFileResponse } from "@docbridge/contracts";
+import { Card } from "../../components/Card";
 import { ApiError } from "../../lib/api";
 import { openPresignedUrl } from "../../lib/download";
 import { humanSize } from "../../lib/format";
@@ -46,37 +47,37 @@ export function JobFileList({
   };
 
   return (
-    <section>
-      <h2 className="text-sm font-medium text-gray-900">Files</h2>
+    <Card title="Files">
       {files.length === 0 ? (
-        <p className="mt-1 text-sm text-gray-500">This job has no files.</p>
+        <p className="text-sm text-muted">This job has no files.</p>
       ) : (
-        <table className="mt-1 w-full divide-y divide-gray-200 rounded-md border border-gray-200 bg-white text-sm">
+        <table className="w-full divide-y divide-line text-sm">
           <thead>
-            <tr className="text-left text-xs text-gray-500">
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="px-3 py-2 font-medium">Size</th>
-              <th className="px-3 py-2 font-medium" />
+            <tr className="text-left text-xs text-muted">
+              <th className="py-2 font-medium">Name</th>
+              <th className="py-2 font-medium">Size</th>
+              <th className="py-2 font-medium" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-line">
             {files.map((file) => (
               <tr key={file.id}>
-                <td className="px-3 py-2 text-gray-900">{file.name}</td>
-                <td className="px-3 py-2 text-gray-900">
-                  {humanSize(file.sizeBytes)}
-                </td>
-                <td className="px-3 py-2 text-right">
+                <td className="py-2 text-ink">{file.name}</td>
+                <td className="py-2 text-ink">{humanSize(file.sizeBytes)}</td>
+                <td className="py-2 text-right">
                   <button
                     type="button"
                     disabled={pendingIds.has(file.id)}
                     onClick={() => void download(file.id)}
-                    className="text-blue-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                    className="text-accent hover:underline disabled:cursor-not-allowed disabled:text-muted disabled:no-underline"
                   >
                     {pendingIds.has(file.id) ? "Preparing…" : "Download"}
                   </button>
                   {errors[file.id] && (
-                    <p className="text-xs text-red-700" role="alert">
+                    <p
+                      className="text-xs text-rose-600 dark:text-rose-300"
+                      role="alert"
+                    >
                       {errors[file.id]}
                     </p>
                   )}
@@ -86,6 +87,6 @@ export function JobFileList({
           </tbody>
         </table>
       )}
-    </section>
+    </Card>
   );
 }

@@ -25,17 +25,17 @@ export function UploadList({
     return null;
   }
   return (
-    <ul className="divide-y divide-gray-200 rounded-md border border-gray-200 bg-white">
+    <ul className="mt-2 divide-y divide-line">
       {items.map((item) => {
         const active = item.phase === "hashing" || item.phase === "uploading";
         return (
           <li key={item.id} className="px-4 py-3">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-gray-900">
+                <p className="truncate text-sm font-medium text-ink">
                   {item.name}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted">
                   {humanSize(item.sizeBytes)} · {STATUS_LABELS[item.phase]}
                 </p>
               </div>
@@ -57,17 +57,17 @@ export function UploadList({
                   aria-valuenow={Math.round(item.progress * 100)}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  className="h-2 w-full overflow-hidden rounded-full bg-gray-200"
+                  className="h-2 w-full overflow-hidden rounded-full bg-ink/10"
                 >
                   <div
-                    className="h-full rounded-full bg-blue-600 transition-all"
+                    className="h-full rounded-full bg-accent-fill transition-all"
                     style={{ width: `${Math.round(item.progress * 100)}%` }}
                   />
                 </div>
               </div>
             )}
             {item.phase === "error" && item.error && (
-              <p role="alert" className="mt-2 text-sm text-red-700">
+              <p role="alert" className="mt-2 text-sm text-rose-600 dark:text-rose-300">
                 {item.error.message}
               </p>
             )}

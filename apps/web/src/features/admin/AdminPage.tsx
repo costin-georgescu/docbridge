@@ -33,22 +33,22 @@ function TeamCheckboxes({
   onToggle: (id: string, checked: boolean) => void;
 }) {
   if (teams.length === 0) {
-    return <p className="text-sm text-gray-500">No teams available.</p>;
+    return <p className="text-sm text-muted">No teams available.</p>;
   }
   return (
     <div className="flex flex-wrap gap-3">
       {teams.map((team) => (
         <label
           key={team.id}
-          className="flex items-center gap-1.5 text-sm text-gray-900"
+          className="flex items-center gap-1.5 text-sm text-ink"
         >
           <Checkbox.Root
             checked={selected.has(team.id)}
             onCheckedChange={(checked) => onToggle(team.id, checked === true)}
             aria-label={team.name}
-            className="flex h-4 w-4 items-center justify-center rounded border border-gray-300 bg-white data-[checked]:border-blue-600 data-[checked]:bg-blue-600"
+            className="flex h-4 w-4 items-center justify-center rounded border border-line bg-surface data-[checked]:border-accent-fill data-[checked]:bg-accent-fill"
           >
-            <Checkbox.Indicator className="text-white">✓</Checkbox.Indicator>
+            <Checkbox.Indicator className="text-accent-ink">✓</Checkbox.Indicator>
           </Checkbox.Root>
           {team.name}
         </label>
@@ -93,7 +93,7 @@ function TeamEditor({
         }
       />
       {mutation.isError && (
-        <p className="text-sm text-red-700" role="alert">
+        <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
           {mutation.error instanceof ApiError
             ? mutation.error.message
             : "Failed to update teams."}
@@ -140,13 +140,13 @@ function NewUserDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 bg-black/40" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-md bg-white p-6 shadow-lg">
-          <Dialog.Title className="mb-4 text-lg font-semibold text-gray-900">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-surface p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+          <Dialog.Title className="mb-4 text-lg font-semibold text-ink">
             New user
           </Dialog.Title>
           <form onSubmit={onSubmit} className="space-y-4">
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-gray-900">
+              <span className="mb-1 block font-medium text-ink">
                 Email
               </span>
               <Input
@@ -157,7 +157,7 @@ function NewUserDialog({
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-gray-900">
+              <span className="mb-1 block font-medium text-ink">
                 Display name
               </span>
               <Input
@@ -167,7 +167,7 @@ function NewUserDialog({
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-gray-900">
+              <span className="mb-1 block font-medium text-ink">
                 Password
               </span>
               <Input
@@ -179,7 +179,7 @@ function NewUserDialog({
               />
             </label>
             <div>
-              <span className="mb-1 block text-sm font-medium text-gray-900">
+              <span className="mb-1 block text-sm font-medium text-ink">
                 Teams
               </span>
               <TeamCheckboxes
@@ -199,7 +199,7 @@ function NewUserDialog({
               />
             </div>
             {mutation.isError && (
-              <p className="text-sm text-red-700" role="alert">
+              <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
                 {mutation.error instanceof ApiError &&
                 mutation.error.code === "email_already_exists"
                   ? "A user with this email already exists."
@@ -251,13 +251,13 @@ export function AdminPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900">Users</h1>
+        <h1 className="text-lg font-semibold text-ink">Users</h1>
         <Button onClick={() => setDialogOpen(true)}>New user</Button>
       </div>
       {users.isPending ? (
-        <p className="text-sm text-gray-500">Loading users…</p>
+        <p className="text-sm text-muted">Loading users…</p>
       ) : users.isError ? (
-        <p className="text-sm text-red-700" role="alert">
+        <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
           {users.error instanceof ApiError
             ? users.error.message
             : "Failed to load users."}
@@ -265,7 +265,7 @@ export function AdminPage() {
       ) : (
         <table className="w-full border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-gray-500">
+            <tr className="border-b border-line text-muted">
               <th className="py-2 pr-4 font-medium">Email</th>
               <th className="py-2 pr-4 font-medium">Name</th>
               <th className="py-2 pr-4 font-medium">Teams</th>
@@ -278,7 +278,7 @@ export function AdminPage() {
             {allUsers.map((user) => (
               <tr
                 key={user.id}
-                className="border-b border-gray-100 align-top text-gray-900"
+                className="border-b border-line align-top text-ink"
               >
                 <td className="py-2 pr-4">{user.email}</td>
                 <td className="py-2 pr-4">{user.displayName}</td>
@@ -296,7 +296,7 @@ export function AdminPage() {
                 </td>
                 <td className="py-2 pr-4">
                   {user.isAdmin && (
-                    <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700">
+                    <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-xs font-medium text-accent">
                       admin
                     </span>
                   )}

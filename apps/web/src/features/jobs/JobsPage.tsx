@@ -1,31 +1,17 @@
 import { Link } from "@tanstack/react-router";
-import { JobSummary } from "@docbridge/contracts";
-import { Button } from "../../components/Button";
 import { ApiError } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
 import { useJobs } from "./api";
 import { JobStatusBadge } from "./JobStatusBadge";
 
-function TaskProgress({ job }: { job: JobSummary }) {
-  const done = job.counts.completed + job.counts.failed;
-  return (
-    <span>
-      {done} of {job.tasksCount}
-      {job.counts.failed > 0 && (
-        <span className="text-red-700"> · {job.counts.failed} failed</span>
-      )}
-    </span>
-  );
-}
-
 export function JobsPage() {
   const jobs = useJobs();
   if (jobs.isPending) {
-    return <p className="text-sm text-gray-500">Loading jobs…</p>;
+    return <p className="text-sm text-muted">Loading jobs…</p>;
   }
   if (jobs.isError) {
     return (
-      <p className="text-sm text-red-700" role="alert">
+      <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
         {jobs.error instanceof ApiError
           ? jobs.error.message
           : "Failed to load jobs."}
@@ -34,56 +20,65 @@ export function JobsPage() {
   }
   const items = jobs.data.pages.flatMap((page) => page.items);
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-gray-900">Jobs</h1>
+    <div className="mx-auto max-w-2xl">
+      <header className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
+        <p className="mt-1 text-sm text-muted">Every delivery, in order.</p>
+      </header>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-500">No jobs yet.</p>
+        <p className="text-sm text-muted">No jobs yet.</p>
       ) : (
-        <table className="w-full divide-y divide-gray-200 rounded-md border border-gray-200 bg-white text-sm">
-          <thead>
-            <tr className="text-left text-xs text-gray-500">
-              <th className="px-3 py-2 font-medium">Submitted</th>
-              <th className="px-3 py-2 font-medium">By</th>
-              <th className="px-3 py-2 font-medium">Files</th>
-              <th className="px-3 py-2 font-medium">Progress</th>
-              <th className="px-3 py-2 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {items.map((job) => (
-              <tr key={job.id}>
-                <td className="px-3 py-2">
-                  <Link
-                    to="/jobs/$jobId"
-                    params={{ jobId: job.id }}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {formatDateTime(job.submittedAt)}
-                  </Link>
-                </td>
-                <td className="px-3 py-2 text-gray-900">
-                  {job.submitterDisplayName}
-                </td>
-                <td className="px-3 py-2 text-gray-900">{job.filesCount}</td>
-                <td className="px-3 py-2 text-gray-900">
-                  <TaskProgress job={job} />
-                </td>
-                <td className="px-3 py-2">
-                  <JobStatusBadge status={job.status} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ol className="relative ml-1 border-l-2 border-dotted border-accent/40 pl-8">
+          {items.map((job) => {
+            const done = job.counts.completed + job.counts.failed;
+            return (
+              <li key={job.id} className="relative pb-8 last:pb-0">
+                <span
+                  className={`absolute -left-[38px] top-1.5 size-3 rounded-full ring-4 ring-canvas ${
+                    job.status === "in_progress"
+                      ? "bg-accent-fill"
+                      : "bg-muted/50"
+                  }`}
+                />
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+                  {formatDateTime(job.submittedAt)}
+                </p>
+                <Link
+                  to="/jobs/$jobId"
+                  params={{ jobId: job.id }}
+                  className="mt-1.5 block rounded-2xl border border-line bg-surface p-4 transition-shadow hover:shadow-[0_10px_30px_rgba(16,26,60,0.10)] dark:hover:border-[#2e3c73] dark:hover:shadow-none"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold">
+                      {job.submitterDisplayName}
+                    </p>
+                    <JobStatusBadge status={job.status} />
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {job.filesCount} files &middot; {done} of {job.tasksCount}{" "}
+                    tasks done
+                    {job.counts.failed > 0 && (
+                      <span className="text-rose-600 dark:text-rose-300">
+                        {" "}
+                        &middot; {job.counts.failed} failed
+                      </span>
+                    )}
+                  </p>
+                </Link>
+              </li>
+            );
+          })}
+        </ol>
       )}
       {jobs.hasNextPage && (
-        <Button
-          variant="secondary"
+        <button
+          type="button"
           disabled={jobs.isFetchingNextPage}
           onClick={() => void jobs.fetchNextPage()}
+          className="ml-8 mt-2 rounded-full border border-line px-5 py-2 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
         >
           {jobs.isFetchingNextPage ? "Loading…" : "Load more"}
-        </Button>
+        </button>
       )}
     </div>
   );
