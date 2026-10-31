@@ -10,9 +10,9 @@
   --ink: #101a3c;
   --muted: #5d6680;
   --accent: #0b7d92;
-  --accent-fill: #101a3c;
-  --accent-ink: #ffffff;
-  --accent-soft: rgb(14 147 167 / 0.12);
+  --accent-fill: #4fd3e4;
+  --accent-ink: #06283a;
+  --accent-soft: rgb(79 211 228 / 0.3);
 }
 
 [data-theme="dark"] {
