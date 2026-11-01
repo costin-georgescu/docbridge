@@ -713,6 +713,89 @@ export class DocBridgeStack extends cdk.Stack {
       });
     }
 
+    // ---------- Seed task ----------
+    // One-off `aws ecs run-task` like the migrate defs: base seed (teams,
+    // users, worker client) then the demo seed (completed jobs with real
+    // staged/platform objects). Runs on demand, not at deploy time.
+    const seedRole = new iam.Role(this, "SeedRole", {
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+    for (const secret of Object.values(dbSecrets)) {
+      secret.grantRead(seedRole);
+    }
+    workerSecret.grantRead(seedRole);
+    secretsKey.grantDecrypt(seedRole);
+    stagingBucket.grantPut(seedRole, "staged/*");
+    platformBucket.grantPut(seedRole, "versions/*");
+    stagingKey.grantEncryptDecrypt(seedRole);
+    platformKey.grantEncryptDecrypt(seedRole);
+    const seedTaskDef = new ecs.FargateTaskDefinition(this, "SeedTask", {
+      cpu: 256,
+      memoryLimitMiB: 512,
+      taskRole: seedRole,
+      executionRole,
+    });
+    seedTaskDef.addContainer("seed", {
+      containerName: "seed",
+      image: ecs.ContainerImage.fromEcrRepository(repos.api, props.imageTag),
+      command: [
+        "sh",
+        "-c",
+        "node --import tsx scripts/seed.ts && node --import tsx scripts/demo-seed.ts",
+      ],
+      environment: {
+        NODE_ENV: "production",
+        AWS_REGION: config.region,
+        STAGING_BUCKET: stagingBucket.bucketName,
+        PLATFORM_BUCKET: platformBucket.bucketName,
+        WEB_ORIGIN: webOrigin,
+        AUTH_DB_HOST: db.instanceEndpoint.hostname,
+        AUTH_DB_NAME: "auth",
+        DOCBRIDGE_DB_HOST: db.instanceEndpoint.hostname,
+        DOCBRIDGE_DB_NAME: "docbridge",
+        PLATFORM_DB_HOST: db.instanceEndpoint.hostname,
+        PLATFORM_DB_NAME: "platform",
+      },
+      secrets: {
+        AUTH_DB_USERNAME: ecs.Secret.fromSecretsManager(
+          dbSecrets.auth,
+          "username",
+        ),
+        AUTH_DB_PASSWORD: ecs.Secret.fromSecretsManager(
+          dbSecrets.auth,
+          "password",
+        ),
+        DOCBRIDGE_DB_USERNAME: ecs.Secret.fromSecretsManager(
+          dbSecrets.docbridge,
+          "username",
+        ),
+        DOCBRIDGE_DB_PASSWORD: ecs.Secret.fromSecretsManager(
+          dbSecrets.docbridge,
+          "password",
+        ),
+        PLATFORM_DB_USERNAME: ecs.Secret.fromSecretsManager(
+          dbSecrets.platform,
+          "username",
+        ),
+        PLATFORM_DB_PASSWORD: ecs.Secret.fromSecretsManager(
+          dbSecrets.platform,
+          "password",
+        ),
+        WORKER_CLIENT_SECRET: ecs.Secret.fromSecretsManager(workerSecret),
+      },
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: "seed",
+        logGroup: new logs.LogGroup(this, "LogGroup-seed", {
+          logGroupName: `/docbridge/${envName}/seed`,
+          retention: logs.RetentionDays.ONE_MONTH,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      }),
+    });
+    new cdk.CfnOutput(this, "SeedTaskDef", {
+      value: seedTaskDef.taskDefinitionArn,
+    });
+
     // ---------- Alarms ----------
     const alarmTopic = new sns.Topic(this, "Alarms", {
       topicName: `docbridge-${envName}-alarms`,

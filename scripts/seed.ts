@@ -1,12 +1,10 @@
 import { createClient as createAuthClient } from "@docbridge/db-auth";
 import { createClient as createPlatformClient } from "@docbridge/db-platform";
+import { dbUrl } from "./db-url";
 import argon2 from "argon2";
 
-const authUrl = process.env.AUTH_DATABASE_URL;
-const platformUrl = process.env.PLATFORM_DATABASE_URL;
-if (!authUrl || !platformUrl) {
-  throw new Error("AUTH_DATABASE_URL and PLATFORM_DATABASE_URL must be set");
-}
+const authUrl = dbUrl("AUTH");
+const platformUrl = dbUrl("PLATFORM");
 
 const TEAM_A = "00000000-0000-7000-8000-0000000000a1";
 const TEAM_B = "00000000-0000-7000-8000-0000000000b1";

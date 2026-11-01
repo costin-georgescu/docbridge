@@ -169,6 +169,12 @@ importers:
 
   .:
     dependencies:
+      '@aws-crypto/crc32c':
+        specifier: 5.2.0
+        version: 5.2.0
+      '@aws-sdk/client-s3':
+        specifier: 3.1155.0
+        version: 3.1155.0
       '@docbridge/db-auth':
         specifier: workspace:*
         version: link:packages/db-auth

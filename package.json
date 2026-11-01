@@ -19,6 +19,7 @@
     "db:migrate": "node --env-file=.env scripts/db.mjs migrate:deploy",
     "db:migrate:dev": "node --env-file=.env scripts/db.mjs migrate:dev",
     "db:seed": "node --env-file=.env --import tsx scripts/seed.ts",
+    "demo:seed": "node --env-file=.env --import tsx scripts/demo-seed.ts",
     "e2e": "pnpm --filter @docbridge/e2e test",
     "e2e:install": "pnpm --filter @docbridge/e2e install-browsers",
     "perf:seed": "node --env-file=.env --import tsx tests/perf/seed.ts",
@@ -43,6 +44,8 @@
     "typescript-eslint": "8.72.0"
   },
   "dependencies": {
+    "@aws-crypto/crc32c": "5.2.0",
+    "@aws-sdk/client-s3": "3.1155.0",
     "@docbridge/db-auth": "workspace:*",
     "@docbridge/db-docbridge": "workspace:*",
     "@docbridge/db-platform": "workspace:*"
