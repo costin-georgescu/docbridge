@@ -30,8 +30,8 @@ export async function logout(page: Page) {
   await expect(page).toHaveURL(/\/login/);
 }
 
-// Folders repeat names across binders and teams ("Inbox" everywhere), so the
-// checkbox is scoped through the ancestor treeitems.
+// Folders repeat names across binders and teams ("Correspondence" everywhere),
+// so the checkbox is scoped through the ancestor treeitems.
 export function folderCheckbox(
   page: Page,
   team: string,

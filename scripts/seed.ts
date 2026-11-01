@@ -16,6 +16,57 @@ const TEAMS = [
   { id: TEAM_C, name: "Central Regulatory" },
 ];
 
+interface FolderSpec {
+  name: string;
+  children: string[];
+}
+interface BinderSpec {
+  name: string;
+  folders: FolderSpec[];
+}
+
+// Site teams get a templated Investigator Site File structure, like real
+// site eBinders; the central regulatory team files into TMF-style binders.
+// Every binder keeps a "Correspondence" section — ubiquitous in real ISF/TMF
+// structures and what the e2e tree assertions count on.
+const SITE_BINDERS: BinderSpec[] = [
+  {
+    name: "Investigator Site File",
+    folders: [
+      { name: "Correspondence", children: ["Sponsor & CRO"] },
+      { name: "IRB & IEC Approvals", children: [] },
+    ],
+  },
+  {
+    name: "Safety Reporting",
+    folders: [
+      { name: "Correspondence", children: ["Safety Queries"] },
+      { name: "SUSARs", children: [] },
+    ],
+  },
+];
+const CENTRAL_BINDERS: BinderSpec[] = [
+  {
+    name: "Trial Master File",
+    folders: [
+      { name: "Correspondence", children: ["Health Authority"] },
+      { name: "Regulatory Submissions", children: [] },
+    ],
+  },
+  {
+    name: "Safety Reporting",
+    folders: [
+      { name: "Correspondence", children: ["SUSAR Distribution"] },
+      { name: "Periodic Reports", children: [] },
+    ],
+  },
+];
+const BINDERS_BY_TEAM = new Map<string, BinderSpec[]>([
+  [TEAM_A, SITE_BINDERS],
+  [TEAM_B, SITE_BINDERS],
+  [TEAM_C, CENTRAL_BINDERS],
+]);
+
 async function seedPlatform() {
   const db = createPlatformClient(platformUrl!);
   for (const team of TEAMS) {
@@ -24,11 +75,11 @@ async function seedPlatform() {
       update: { name: team.name },
       create: team,
     });
-    for (const binderName of ["Binder 1", "Binder 2"]) {
+    for (const binderSpec of BINDERS_BY_TEAM.get(team.id)!) {
       const binder = await db.binder.upsert({
-        where: { teamId_name: { teamId: team.id, name: binderName } },
+        where: { teamId_name: { teamId: team.id, name: binderSpec.name } },
         update: {},
-        create: { teamId: team.id, name: binderName },
+        create: { teamId: team.id, name: binderSpec.name },
       });
       async function ensureFolder(name: string, parentFolderId: string | null) {
         // upsert's compound-unique where rejects null parts, so find+create.
@@ -40,9 +91,12 @@ async function seedPlatform() {
           data: { binderId: binder.id, name, parentFolderId },
         });
       }
-      const inbox = await ensureFolder("Inbox", null);
-      await ensureFolder("Archive", inbox.id);
-      await ensureFolder("Reports", null);
+      for (const folderSpec of binderSpec.folders) {
+        const parent = await ensureFolder(folderSpec.name, null);
+        for (const child of folderSpec.children) {
+          await ensureFolder(child, parent.id);
+        }
+      }
     }
   }
   return db.$disconnect();

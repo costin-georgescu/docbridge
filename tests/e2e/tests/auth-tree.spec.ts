@@ -30,9 +30,7 @@ test.describe("flow 1: authentication and destination tree", () => {
     await page.getByLabel("Email").fill(SEED_USERS.anna.email);
     await page.getByLabel("Password").fill(SEED_USERS.anna.password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(
-      page.getByRole("link", { name: "Deliver" }),
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Deliver" })).toBeVisible();
   });
 
   test("the tree is filtered by team claims and searchable", async ({
@@ -57,17 +55,19 @@ test.describe("flow 1: authentication and destination tree", () => {
     await expect(
       page.getByText("2 teams · 4 binders · 12 folders"),
     ).toBeVisible();
-    // An "Inbox" per binder: 2 teams × 2 binders proves expansion worked.
-    // Expandable folders are buttons; the arrow is aria-hidden so the
+    // A "Correspondence" per binder: 2 teams × 2 binders proves expansion
+    // worked. Expandable folders are buttons; the arrow is aria-hidden so the
     // accessible name is the folder name alone.
     await expect(
-      page.getByRole("button", { name: "Inbox", exact: true }),
+      page.getByRole("button", { name: "Correspondence", exact: true }),
     ).toHaveCount(4);
 
+    // Filtering keeps matched folders together with their children, so each
+    // of the 4 Correspondence sections brings one child folder along.
     const filter = page.getByLabel("Filter destinations");
-    await filter.fill("Reports");
+    await filter.fill("Correspondence");
     await expect(
-      page.getByText("2 teams · 4 binders · 4 folders"),
+      page.getByText("2 teams · 4 binders · 8 folders"),
     ).toBeVisible();
     await filter.fill("no-such-destination");
     await expect(page.getByText("No matches.")).toBeVisible();

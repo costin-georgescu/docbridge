@@ -1671,10 +1671,10 @@ const JOBS: DemoJob[] = [
     fileNs: [1, 2, 3],
     daysAgo: 21,
     destinations: [
-      { team: "Oncology Site A", binder: "Binder 1", folder: ["Inbox"] },
-      { team: "Cardiology Site B", binder: "Binder 1", folder: ["Inbox"] },
-      { team: "Central Regulatory", binder: "Binder 1", folder: ["Inbox"] },
-      { team: "Central Regulatory", binder: "Binder 2", folder: ["Reports"] },
+      { team: "Oncology Site A", binder: "Investigator Site File", folder: ["IRB & IEC Approvals"] },
+      { team: "Cardiology Site B", binder: "Investigator Site File", folder: ["IRB & IEC Approvals"] },
+      { team: "Central Regulatory", binder: "Trial Master File", folder: ["Regulatory Submissions"] },
+      { team: "Central Regulatory", binder: "Trial Master File", folder: ["Correspondence", "Health Authority"] },
     ],
   },
   {
@@ -1683,8 +1683,8 @@ const JOBS: DemoJob[] = [
     fileNs: [4, 5],
     daysAgo: 19,
     destinations: [
-      { team: "Oncology Site A", binder: "Binder 1", folder: ["Inbox", "Archive"] },
-      { team: "Central Regulatory", binder: "Binder 1", folder: ["Reports"] },
+      { team: "Oncology Site A", binder: "Safety Reporting", folder: ["SUSARs"] },
+      { team: "Central Regulatory", binder: "Trial Master File", folder: ["Regulatory Submissions"] },
     ],
   },
   {
@@ -1693,9 +1693,9 @@ const JOBS: DemoJob[] = [
     fileNs: [6, 9],
     daysAgo: 16,
     destinations: [
-      { team: "Oncology Site A", binder: "Binder 2", folder: ["Inbox"] },
-      { team: "Cardiology Site B", binder: "Binder 2", folder: ["Inbox"] },
-      { team: "Central Regulatory", binder: "Binder 2", folder: ["Inbox"] },
+      { team: "Oncology Site A", binder: "Investigator Site File", folder: ["Correspondence", "Sponsor & CRO"] },
+      { team: "Cardiology Site B", binder: "Investigator Site File", folder: ["Correspondence", "Sponsor & CRO"] },
+      { team: "Central Regulatory", binder: "Trial Master File", folder: ["Regulatory Submissions"] },
     ],
   },
   {
@@ -1704,7 +1704,7 @@ const JOBS: DemoJob[] = [
     fileNs: [10],
     daysAgo: 13,
     destinations: [
-      { team: "Cardiology Site B", binder: "Binder 1", folder: ["Reports"] },
+      { team: "Cardiology Site B", binder: "Investigator Site File", folder: ["IRB & IEC Approvals"] },
     ],
   },
   {
@@ -1713,8 +1713,8 @@ const JOBS: DemoJob[] = [
     fileNs: [2, 7],
     daysAgo: 10,
     destinations: [
-      { team: "Central Regulatory", binder: "Binder 1", folder: ["Inbox"] },
-      { team: "Central Regulatory", binder: "Binder 2", folder: ["Inbox"] },
+      { team: "Central Regulatory", binder: "Trial Master File", folder: ["Regulatory Submissions"] },
+      { team: "Central Regulatory", binder: "Trial Master File", folder: ["Correspondence", "Health Authority"] },
     ],
   },
   {
@@ -1723,8 +1723,8 @@ const JOBS: DemoJob[] = [
     fileNs: [5],
     daysAgo: 8,
     destinations: [
-      { team: "Oncology Site A", binder: "Binder 1", folder: ["Reports"] },
-      { team: "Central Regulatory", binder: "Binder 2", folder: ["Reports"] },
+      { team: "Oncology Site A", binder: "Investigator Site File", folder: ["IRB & IEC Approvals"] },
+      { team: "Central Regulatory", binder: "Safety Reporting", folder: ["Periodic Reports"] },
     ],
   },
   {
@@ -1733,8 +1733,8 @@ const JOBS: DemoJob[] = [
     fileNs: [1, 6],
     daysAgo: 5,
     destinations: [
-      { team: "Cardiology Site B", binder: "Binder 1", folder: ["Inbox"] },
-      { team: "Cardiology Site B", binder: "Binder 2", folder: ["Reports"] },
+      { team: "Cardiology Site B", binder: "Investigator Site File", folder: ["IRB & IEC Approvals"] },
+      { team: "Cardiology Site B", binder: "Safety Reporting", folder: ["Correspondence"] },
     ],
   },
   {
@@ -1743,8 +1743,8 @@ const JOBS: DemoJob[] = [
     fileNs: [3, 8],
     daysAgo: 3,
     destinations: [
-      { team: "Oncology Site A", binder: "Binder 1", folder: ["Inbox"] },
-      { team: "Oncology Site A", binder: "Binder 2", folder: ["Inbox"] },
+      { team: "Oncology Site A", binder: "Investigator Site File", folder: ["Correspondence"] },
+      { team: "Oncology Site A", binder: "Safety Reporting", folder: ["Correspondence"] },
     ],
   },
   {
@@ -1754,8 +1754,8 @@ const JOBS: DemoJob[] = [
     daysAgo: 1,
     failFirstTask: true,
     destinations: [
-      { team: "Oncology Site A", binder: "Binder 1", folder: ["Reports"] },
-      { team: "Central Regulatory", binder: "Binder 1", folder: ["Inbox"] },
+      { team: "Oncology Site A", binder: "Investigator Site File", folder: ["IRB & IEC Approvals"] },
+      { team: "Central Regulatory", binder: "Trial Master File", folder: ["Regulatory Submissions"] },
     ],
   },
   {
@@ -1764,7 +1764,7 @@ const JOBS: DemoJob[] = [
     fileNs: [2, 4],
     daysAgo: 0.5,
     destinations: [
-      { team: "Central Regulatory", binder: "Binder 1", folder: ["Inbox"] },
+      { team: "Central Regulatory", binder: "Safety Reporting", folder: ["Correspondence", "SUSAR Distribution"] },
     ],
   },
   {
@@ -1774,8 +1774,8 @@ const JOBS: DemoJob[] = [
     daysAgo: 0,
     pending: true,
     destinations: [
-      { team: "Oncology Site A", binder: "Binder 1", folder: ["Inbox"] },
-      { team: "Cardiology Site B", binder: "Binder 1", folder: ["Inbox"] },
+      { team: "Oncology Site A", binder: "Investigator Site File", folder: ["Correspondence", "Sponsor & CRO"] },
+      { team: "Cardiology Site B", binder: "Investigator Site File", folder: ["Correspondence", "Sponsor & CRO"] },
     ],
   },
 ];

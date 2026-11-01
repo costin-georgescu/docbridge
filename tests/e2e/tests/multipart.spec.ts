@@ -36,8 +36,13 @@ test("a 100 MB file uploads multipart and is delivered end to end", async ({
   expect(partUploads.length).toBeGreaterThanOrEqual(7);
 
   await page.getByRole("button", { name: "Expand all" }).click();
-  await folderCheckbox(page, "Oncology Site A", "Binder 1", "Reports").click();
-  const reports = folderPath("Oncology Site A", "Binder 1", "Reports");
+  await folderCheckbox(
+    page,
+    "Oncology Site A",
+    "Safety Reporting",
+    "SUSARs",
+  ).click();
+  const reports = folderPath("Oncology Site A", "Safety Reporting", "SUSARs");
   await page
     .getByRole("checkbox", { name: `Assign ${reports} to all files` })
     .click();

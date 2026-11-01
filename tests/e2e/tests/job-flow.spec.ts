@@ -31,22 +31,35 @@ test("upload, map, submit, track to completion and download", async ({
 
   // Two destination folders in two different teams.
   await page.getByRole("button", { name: "Expand all" }).click();
-  await folderCheckbox(page, "Oncology Site A", "Binder 1", "Inbox").click();
+  await folderCheckbox(
+    page,
+    "Oncology Site A",
+    "Investigator Site File",
+    "IRB & IEC Approvals",
+  ).click();
   await folderCheckbox(
     page,
     "Central Regulatory",
-    "Binder 2",
-    "Reports",
+    "Safety Reporting",
+    "Periodic Reports",
   ).click();
 
   // Assign every file to both folders through the matrix column headers.
-  const inbox = folderPath("Oncology Site A", "Binder 1", "Inbox");
-  const reports = folderPath("Central Regulatory", "Binder 2", "Reports");
+  const siteDest = folderPath(
+    "Oncology Site A",
+    "Investigator Site File",
+    "IRB & IEC Approvals",
+  );
+  const centralDest = folderPath(
+    "Central Regulatory",
+    "Safety Reporting",
+    "Periodic Reports",
+  );
   await page
-    .getByRole("checkbox", { name: `Assign ${inbox} to all files` })
+    .getByRole("checkbox", { name: `Assign ${siteDest} to all files` })
     .click();
   await page
-    .getByRole("checkbox", { name: `Assign ${reports} to all files` })
+    .getByRole("checkbox", { name: `Assign ${centralDest} to all files` })
     .click();
   await expect(
     page.getByText("Files 2/100 · Folders 2/20 · Tasks 4/2,000"),
