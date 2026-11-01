@@ -20,7 +20,7 @@ export function JobsPage() {
   }
   const items = jobs.data.pages.flatMap((page) => page.items);
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl pb-16">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
         <p className="mt-1 text-sm text-muted">Every delivery, in order.</p>

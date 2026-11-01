@@ -56,7 +56,7 @@ function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas text-ink">
+    <div className="h-screen overflow-hidden bg-canvas text-ink">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-x-0 top-0 h-80 dark:bg-[radial-gradient(60rem_20rem_at_50%_-10rem,rgba(79,211,228,0.14),transparent)]"
@@ -97,7 +97,7 @@ function Layout() {
           )}
         </div>
       </div>
-      <main className="px-6 pb-16 pt-24">
+      <main className="h-full overflow-y-auto px-6 pt-24">
         <Outlet />
       </main>
     </div>

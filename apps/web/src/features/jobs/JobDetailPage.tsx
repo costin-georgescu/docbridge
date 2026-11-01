@@ -29,7 +29,7 @@ export function JobDetailPage() {
     (t) => t.status === "pending" && t.attemptCount > 0,
   ).length;
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4 pb-16">
       <Card>
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold text-ink">

@@ -11,7 +11,7 @@ export function UploadPage() {
   const items = useUploads();
   const tree = useTree(false);
   return (
-    <div className="flex h-[calc(100vh-8rem)] min-h-[36rem] min-w-[64rem] flex-col gap-4">
+    <div className="flex h-full min-h-[36rem] min-w-[64rem] flex-col gap-4 pb-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
           Deliver documents

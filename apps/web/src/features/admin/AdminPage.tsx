@@ -249,7 +249,7 @@ export function AdminPage() {
   const allUsers = users.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-16">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-ink">Users</h1>
         <Button onClick={() => setDialogOpen(true)}>New user</Button>
