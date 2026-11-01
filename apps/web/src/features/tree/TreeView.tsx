@@ -81,7 +81,7 @@ export function TreeView({
   const counts = countNodes(visible);
 
   const renderFolders = (folders: TreeFolder[]): ReactNode => (
-    <ul role="group" className="ml-[22px] border-l border-line pl-2">
+    <ul role="group" className="ml-[22px] border-l border-ink/15 pl-2">
       {folders.map((folder) => {
         const expandable = folder.folders.length > 0;
         const expanded = expandable && isExpanded(folder.id);
@@ -101,7 +101,7 @@ export function TreeView({
                   }
                   onCheckedChange={() => selection.onToggle(folder.id)}
                   aria-label={folder.name}
-                  className="flex size-[18px] shrink-0 items-center justify-center rounded-md border border-line bg-surface data-[checked]:border-accent-fill data-[checked]:bg-accent-fill disabled:opacity-50"
+                  className="flex size-[18px] shrink-0 items-center justify-center rounded-md border border-ink/30 bg-ink/5 data-[checked]:border-accent-fill data-[checked]:bg-accent-fill disabled:opacity-50"
                 >
                   <Checkbox.Indicator className="text-accent-ink">
                     ✓
@@ -112,14 +112,14 @@ export function TreeView({
                 <button
                   type="button"
                   onClick={() => toggle(folder.id)}
-                  className={`flex flex-1 items-center gap-1.5 py-0.5 text-left text-sm ${checked ? "font-medium text-accent" : "text-ink"}`}
+                  className={`flex flex-1 items-center gap-1.5 py-0.5 text-left text-sm ${checked ? "font-medium text-accent" : "text-ink/80"}`}
                 >
                   <Chevron expanded={expanded} />
                   {folder.name}
                 </button>
               ) : (
                 <span
-                  className={`block py-0.5 pl-[18px] text-sm ${checked ? "font-medium text-accent" : "text-ink"}`}
+                  className={`block py-0.5 pl-[18px] text-sm ${checked ? "font-medium text-accent" : "text-ink/80"}`}
                 >
                   {folder.name}
                 </span>
@@ -147,11 +147,11 @@ export function TreeView({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-line bg-ink/[0.02]">
           <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-1.5">
-            <span className="text-xs text-muted">
+            <span className="whitespace-nowrap text-xs text-muted">
               {counts.teams} teams · {counts.binders} binders · {counts.folders}{" "}
               folders
             </span>
-            <span className="flex items-center gap-3">
+            <span className="flex shrink-0 items-center gap-3 whitespace-nowrap">
               <button
                 type="button"
                 onClick={() =>
@@ -194,7 +194,7 @@ export function TreeView({
                       {teamExpanded && (
                         <ul
                           role="group"
-                          className="ml-[22px] space-y-1 border-l border-line pl-2"
+                          className="ml-[22px] space-y-1 border-l border-ink/15 pl-2"
                         >
                           {team.binders.map((binder) => {
                             const binderExpanded = isExpanded(binder.id);

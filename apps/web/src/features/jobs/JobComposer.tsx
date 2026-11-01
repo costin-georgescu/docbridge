@@ -75,13 +75,28 @@ export function JobComposer({
     dispatch(action);
   };
 
+  const statusText =
+    error !== null
+      ? error.message
+      : genericError
+        ? "Submission failed. Try again."
+        : submittedJobId !== null
+          ? `Job submitted. ${submittedJobId}`
+          : summary.blockers.join(" ");
+  const statusClass =
+    error !== null || genericError
+      ? "text-rose-600 dark:text-rose-300"
+      : submittedJobId !== null
+        ? "text-emerald-600 dark:text-emerald-300"
+        : "text-muted";
+
   return (
     <Card
       title="Destinations & mapping"
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-0 flex-1 gap-4">
-        <div className="w-80 shrink-0">
+        <div className="w-[22rem] shrink-0">
           <TreeView
             tree={tree}
             selection={{
@@ -134,8 +149,8 @@ export function JobComposer({
           )}
         </div>
       </div>
-      <div className="mt-4 space-y-2 border-t border-line pt-4">
-        <p className="text-sm text-ink">
+      <div className="mt-4 flex items-center gap-4 border-t border-line pt-4">
+        <p className="shrink-0 text-sm text-ink">
           <span
             className={
               summary.counts.files > MAX_JOB_FILES
@@ -169,7 +184,21 @@ export function JobComposer({
             {MAX_JOB_TASKS.toLocaleString("en-US")}
           </span>
         </p>
+        <p
+          role={
+            error !== null || genericError
+              ? "alert"
+              : submittedJobId !== null
+                ? "status"
+                : undefined
+          }
+          className={`min-w-0 flex-1 truncate text-right text-sm ${statusClass}`}
+          title={statusText}
+        >
+          {statusText}
+        </p>
         <Button
+          className="shrink-0"
           disabled={summary.request === null || mutation.isPending}
           onClick={() => {
             if (summary.request) {
@@ -181,20 +210,11 @@ export function JobComposer({
         >
           {mutation.isPending ? "Submitting…" : "Submit"}
         </Button>
-        {submittedJobId !== null && (
-          <p
-            role="status"
-            className="text-sm text-emerald-600 dark:text-emerald-300"
-          >
-            Job submitted. {submittedJobId}
-          </p>
-        )}
-        {error !== null && (
-          <div
-            role="alert"
-            className="text-sm text-rose-600 dark:text-rose-300"
-          >
-            <p>{error.message}</p>
+      </div>
+      {error !== null &&
+        (Array.isArray(error.details.fileIds) ||
+          Array.isArray(error.details.folderIds)) && (
+          <div className="mt-2 text-sm text-rose-600 dark:text-rose-300">
             {Array.isArray(error.details.fileIds) && (
               <ul>
                 {(error.details.fileIds as string[]).map((fileId) => (
@@ -216,19 +236,6 @@ export function JobComposer({
             )}
           </div>
         )}
-        {genericError && (
-          <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">
-            Submission failed. Try again.
-          </p>
-        )}
-        {summary.blockers.length > 0 && (
-          <ul className="text-sm text-muted">
-            {summary.blockers.map((blocker) => (
-              <li key={blocker}>{blocker}</li>
-            ))}
-          </ul>
-        )}
-      </div>
     </Card>
   );
 }

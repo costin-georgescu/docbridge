@@ -87,71 +87,110 @@ export function MappingMatrix({
     rows.every((row) => row.folderIds.length === folders.length);
   const anyAssigned = rows.some((row) => row.folderIds.length > 0);
 
+  // Columns are grouped by parent path ("Team / Binder") so folders that
+  // share a leaf name stay distinguishable; the leaf name labels each column.
+  const groups: { key: string; label: string; folders: MappingFolder[] }[] =
+    [];
+  const groupByKey = new Map<string, (typeof groups)[number]>();
+  for (const folder of folders) {
+    const key = parentPath(folder.path) ?? "";
+    let group = groupByKey.get(key);
+    if (!group) {
+      group = { key, label: key, folders: [] };
+      groupByKey.set(key, group);
+      groups.push(group);
+    }
+    group.folders.push(folder);
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full border-collapse text-left text-sm">
         <thead>
           <tr className="text-muted">
-            <th className="sticky left-0 top-0 z-30 w-10 min-w-10 border-b border-line bg-surface py-2 pr-1 font-medium">
-              <Cell
-                aria-label="Assign every file to every folder"
-                checked={allAssigned}
-                indeterminate={!allAssigned && anyAssigned}
-                disabled={noFolders}
-                onCheckedChange={(checked) => onSetAll(checked === true)}
-              />
+            <th
+              rowSpan={2}
+              className="sticky left-0 top-0 z-30 w-16 min-w-16 border-b border-line bg-surface py-2 pr-1 font-medium"
+            >
+              <div className="flex items-center gap-1.5">
+                <Cell
+                  aria-label="Assign every file to every folder"
+                  title="Assign every file to every folder"
+                  checked={allAssigned}
+                  indeterminate={!allAssigned && anyAssigned}
+                  disabled={noFolders}
+                  onCheckedChange={(checked) => onSetAll(checked === true)}
+                />
+                <span className="text-xs font-normal">All</span>
+              </div>
             </th>
-            <th className="sticky left-10 top-0 z-30 w-64 min-w-64 border-b border-line bg-surface py-2 pr-4 font-medium">
+            <th
+              rowSpan={2}
+              className="sticky left-16 top-0 z-30 w-64 min-w-64 border-b border-line bg-surface py-2 pr-4 font-medium"
+            >
               File
             </th>
-            <th className="sticky top-0 z-20 w-64 border-b border-line bg-surface py-2 pr-4 font-medium">
-              Destinations
-            </th>
-            {folders.map((folder) => {
-              const parent = parentPath(folder.path);
-              const assigned = rows.filter((row) =>
-                row.folderIds.includes(folder.id),
-              ).length;
-              return (
-                <th
-                  key={folder.id}
-                  className="sticky top-0 z-20 border-b border-line bg-surface py-2 pr-4 font-medium"
-                >
-                  <div className="flex items-start gap-1.5" title={folder.path}>
-                    <Cell
-                      className="mt-0.5"
-                      aria-label={`Assign ${folder.path} to all files`}
-                      checked={assigned === rows.length}
-                      indeterminate={assigned > 0 && assigned < rows.length}
-                      onCheckedChange={(checked) =>
-                        onSetColumn(folder.id, checked === true)
-                      }
-                    />
-                    <span className="block min-w-0">
-                      <span className="block max-w-36 truncate text-ink">
+            {groups.map((group) => (
+              <th
+                key={group.key}
+                colSpan={group.folders.length}
+                className="sticky top-0 z-20 h-7 border-b border-l border-line bg-surface px-2 text-center text-xs font-normal text-muted"
+              >
+                <span className="block truncate" title={group.label}>
+                  {group.label || "—"}
+                </span>
+              </th>
+            ))}
+          </tr>
+          <tr className="text-muted">
+            {groups.flatMap((group) =>
+              group.folders.map((folder, index) => {
+                const assigned = rows.filter((row) =>
+                  row.folderIds.includes(folder.id),
+                ).length;
+                return (
+                  <th
+                    key={folder.id}
+                    className={`sticky top-7 z-20 border-b border-line bg-surface py-2 pr-4 font-medium ${
+                      index === 0 ? "border-l" : ""
+                    }`}
+                  >
+                    <div
+                      className="flex items-center justify-center gap-1.5 whitespace-nowrap"
+                      title={folder.path}
+                    >
+                      <Cell
+                        aria-label={`Assign ${folder.path} to all files`}
+                        checked={assigned === rows.length}
+                        indeterminate={assigned > 0 && assigned < rows.length}
+                        onCheckedChange={(checked) =>
+                          onSetColumn(folder.id, checked === true)
+                        }
+                      />
+                      <span className="max-w-28 truncate text-ink">
                         {folder.name}
                       </span>
-                      {parent && (
-                        <span className="block max-w-36 truncate text-xs font-normal text-muted">
-                          {parent}
-                        </span>
-                      )}
-                      <span className="block text-xs font-normal text-muted">
+                      <span
+                        className="text-xs font-normal tabular-nums text-muted"
+                        style={{
+                          minWidth: `${String(rows.length).length * 2 + 1}ch`,
+                        }}
+                      >
                         {assigned}/{rows.length}
                       </span>
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${folder.path}`}
-                      onClick={() => onRemoveFolder(folder.id)}
-                      className="mt-0.5 text-muted hover:text-ink"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </th>
-              );
-            })}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${folder.path}`}
+                        onClick={() => onRemoveFolder(folder.id)}
+                        className="text-muted hover:text-ink"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </th>
+                );
+              }),
+            )}
           </tr>
         </thead>
         <tbody>
@@ -167,9 +206,10 @@ export function MappingMatrix({
                 key={item.id}
                 className="border-b border-line align-top text-ink"
               >
-                <td className="sticky left-0 z-10 w-10 min-w-10 bg-surface py-3 pr-1">
+                <td className="sticky left-0 z-10 w-16 min-w-16 bg-surface py-3 pr-1">
                   <Cell
                     aria-label={`Assign ${item.name} to all folders`}
+                    title={`Assign ${item.name} to all folders`}
                     checked={rowChecked}
                     indeterminate={rowPartial}
                     disabled={noFolders}
@@ -178,7 +218,7 @@ export function MappingMatrix({
                     }
                   />
                 </td>
-                <td className="sticky left-10 z-10 w-64 min-w-64 bg-surface py-2 pr-4">
+                <td className="sticky left-16 z-10 w-64 min-w-64 bg-surface py-2 pr-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-medium" title={item.name}>
@@ -235,80 +275,60 @@ export function MappingMatrix({
                     </p>
                   )}
                 </td>
-                <td className="py-2 pr-4">
-                  <div className="flex max-w-64 flex-wrap gap-1">
-                    {row.folderIds.map((folderId) => {
-                      const folder = folders.find((f) => f.id === folderId);
-                      if (!folder) {
-                        return null;
-                      }
-                      return (
-                        <span
-                          key={folderId}
-                          title={folder.path}
-                          className="inline-flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-xs font-medium text-accent"
-                        >
-                          {folder.name}
-                          <button
-                            type="button"
-                            aria-label={`Remove ${folder.path} from ${item.name}`}
-                            onClick={() => onToggleCell(item.id, folderId)}
-                            className="text-accent/60 hover:text-accent"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                </td>
                 {noFolders && (
                   <td className="py-2 pr-4 text-sm text-muted">
                     Select destination folders in the tree.
                   </td>
                 )}
-                {folders.map((folder) => {
-                  const checked = row.folderIds.includes(folder.id);
-                  return (
-                    <td key={folder.id} className="select-none p-1">
-                      <div
-                        role="checkbox"
-                        aria-checked={checked}
-                        aria-label={`${item.name}: ${folder.path}`}
-                        tabIndex={0}
-                        className={`flex h-9 w-full min-w-9 cursor-pointer items-center justify-center rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-fill ${
-                          checked
-                            ? "border-accent-fill bg-accent-fill text-accent-ink"
-                            : "border-transparent hover:border-line hover:bg-ink/5"
+                {groups.flatMap((group) =>
+                  group.folders.map((folder, index) => {
+                    const checked = row.folderIds.includes(folder.id);
+                    return (
+                      <td
+                        key={folder.id}
+                        className={`select-none p-1 align-middle ${
+                          index === 0 ? "border-l border-line" : ""
                         }`}
-                        onMouseDown={(event) => {
-                          if (event.button !== 0) {
-                            return;
-                          }
-                          event.preventDefault();
-                          paint.current = !checked;
-                          onSetCell(item.id, folder.id, !checked);
-                        }}
-                        onMouseEnter={(event) => {
-                          if (
-                            paint.current !== null &&
-                            (event.buttons & 1) === 1
-                          ) {
-                            onSetCell(item.id, folder.id, paint.current);
-                          }
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === " " || event.key === "Enter") {
-                            event.preventDefault();
-                            onToggleCell(item.id, folder.id);
-                          }
-                        }}
                       >
-                        {checked && "✓"}
-                      </div>
-                    </td>
-                  );
-                })}
+                        <div
+                          role="checkbox"
+                          aria-checked={checked}
+                          aria-label={`${item.name}: ${folder.path}`}
+                          tabIndex={0}
+                          className={`flex h-9 w-full min-w-9 cursor-pointer items-center justify-center rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-fill ${
+                            checked
+                              ? "border-accent-fill bg-accent-fill text-accent-ink"
+                              : "border-transparent hover:border-line hover:bg-ink/5"
+                          }`}
+                          onMouseDown={(event) => {
+                            if (event.button !== 0) {
+                              return;
+                            }
+                            event.preventDefault();
+                            paint.current = !checked;
+                            onSetCell(item.id, folder.id, !checked);
+                          }}
+                          onMouseEnter={(event) => {
+                            if (
+                              paint.current !== null &&
+                              (event.buttons & 1) === 1
+                            ) {
+                              onSetCell(item.id, folder.id, paint.current);
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === " " || event.key === "Enter") {
+                              event.preventDefault();
+                              onToggleCell(item.id, folder.id);
+                            }
+                          }}
+                        >
+                          {checked && "✓"}
+                        </div>
+                      </td>
+                    );
+                  }),
+                )}
               </tr>
             );
           })}
