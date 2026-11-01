@@ -43,6 +43,73 @@ function parentPath(path: string): string | null {
   return cut > 0 ? path.slice(0, cut) : null;
 }
 
+function FileDetails({
+  item,
+  onRetryItem,
+  onRemoveItem,
+}: {
+  item: UploadItem;
+  onRetryItem: (itemId: string) => void;
+  onRemoveItem: (itemId: string) => void;
+}) {
+  const active = item.phase !== "staged" && item.phase !== "error";
+  return (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate font-medium" title={item.name}>
+            {item.name}
+          </p>
+          <p className="text-xs text-muted">
+            {humanSize(item.sizeBytes)} · {STATUS_LABELS[item.phase]}
+          </p>
+        </div>
+        <span className="flex shrink-0 gap-2 text-xs">
+          {item.phase === "error" && item.error?.retryable && (
+            <button
+              type="button"
+              aria-label={`Retry ${item.name}`}
+              onClick={() => onRetryItem(item.id)}
+              className="font-medium text-accent hover:underline"
+            >
+              Retry
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label={`Remove ${item.name}`}
+            onClick={() => onRemoveItem(item.id)}
+            className="font-medium text-muted hover:text-ink"
+          >
+            Remove
+          </button>
+        </span>
+      </div>
+      {active && (
+        <div
+          role="progressbar"
+          aria-valuenow={Math.round(item.progress * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-ink/10"
+        >
+          <div
+            className="h-full rounded-full bg-accent-fill transition-all"
+            style={{
+              width: `${Math.round(item.progress * 100)}%`,
+            }}
+          />
+        </div>
+      )}
+      {item.phase === "error" && item.error && (
+        <p role="alert" className="mt-1 text-xs text-rose-600 dark:text-rose-300">
+          {item.error.message}
+        </p>
+      )}
+    </>
+  );
+}
+
 export function MappingMatrix({
   rows,
   folders,
@@ -77,13 +144,10 @@ export function MappingMatrix({
     return () => window.removeEventListener("mouseup", end);
   }, []);
 
-  if (rows.length === 0) {
-    return null;
-  }
-
   const noFolders = folders.length === 0;
   const allAssigned =
     !noFolders &&
+    rows.length > 0 &&
     rows.every((row) => row.folderIds.length === folders.length);
   const anyAssigned = rows.some((row) => row.folderIds.length > 0);
 
@@ -103,6 +167,17 @@ export function MappingMatrix({
     group.folders.push(folder);
   }
 
+  // When no folders are picked the columns area is a placeholder; the table
+  // frame (headers, file column) stays identical to the mapped state so the
+  // transition between states doesn't reshape the container.
+  const folderPlaceholder = (
+    <div className="flex h-full min-h-80 items-center justify-center rounded-xl border-2 border-dashed border-line bg-ink/[0.02] p-6">
+      <p className="text-center text-sm text-muted">
+        Select destination folders in the tree to start mapping files.
+      </p>
+    </div>
+  );
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full border-collapse text-left text-sm">
@@ -118,7 +193,7 @@ export function MappingMatrix({
                   title="Assign every file to every folder"
                   checked={allAssigned}
                   indeterminate={!allAssigned && anyAssigned}
-                  disabled={noFolders}
+                  disabled={noFolders || rows.length === 0}
                   onCheckedChange={(checked) => onSetAll(checked === true)}
                 />
                 <span className="text-xs font-normal">All</span>
@@ -141,6 +216,12 @@ export function MappingMatrix({
                 </span>
               </th>
             ))}
+            {noFolders && (
+              <th
+                rowSpan={2}
+                className="sticky top-0 z-20 border-b border-l border-line bg-surface"
+              />
+            )}
           </tr>
           <tr className="text-muted">
             {groups.flatMap((group) =>
@@ -161,8 +242,11 @@ export function MappingMatrix({
                     >
                       <Cell
                         aria-label={`Assign ${folder.path} to all files`}
-                        checked={assigned === rows.length}
+                        checked={
+                          rows.length > 0 && assigned === rows.length
+                        }
                         indeterminate={assigned > 0 && assigned < rows.length}
+                        disabled={rows.length === 0}
                         onCheckedChange={(checked) =>
                           onSetColumn(folder.id, checked === true)
                         }
@@ -194,16 +278,26 @@ export function MappingMatrix({
           </tr>
         </thead>
         <tbody>
-          {noFolders && (
-            <tr className="border-b border-line">
-              <td colSpan={2} className="py-3 text-sm text-muted">
-                Select destination folders in the tree.
+          {rows.length === 0 && (
+            <tr className="border-b border-line align-top">
+              <td className="w-16 min-w-16 py-3 pr-1" />
+              <td className="w-64 min-w-64 py-3 pr-4 text-muted">
+                Add files above to map them.
               </td>
+              {noFolders ? (
+                <td className="border-l border-line p-3">
+                  {folderPlaceholder}
+                </td>
+              ) : (
+                <td
+                  colSpan={folders.length}
+                  className="border-l border-line"
+                />
+              )}
             </tr>
           )}
-          {rows.map((row) => {
+          {rows.map((row, rowIndex) => {
             const item = row.item;
-            const active = item.phase !== "staged" && item.phase !== "error";
             const rowChecked =
               !noFolders && row.folderIds.length === folders.length;
             const rowPartial =
@@ -226,62 +320,20 @@ export function MappingMatrix({
                   />
                 </td>
                 <td className="sticky left-16 z-10 w-64 min-w-64 bg-surface py-2 pr-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium" title={item.name}>
-                        {item.name}
-                      </p>
-                      <p className="text-xs text-muted">
-                        {humanSize(item.sizeBytes)} ·{" "}
-                        {STATUS_LABELS[item.phase]}
-                      </p>
-                    </div>
-                    <span className="flex shrink-0 gap-2 text-xs">
-                      {item.phase === "error" && item.error?.retryable && (
-                        <button
-                          type="button"
-                          aria-label={`Retry ${item.name}`}
-                          onClick={() => onRetryItem(item.id)}
-                          className="font-medium text-accent hover:underline"
-                        >
-                          Retry
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        aria-label={`Remove ${item.name}`}
-                        onClick={() => onRemoveItem(item.id)}
-                        className="font-medium text-muted hover:text-ink"
-                      >
-                        Remove
-                      </button>
-                    </span>
-                  </div>
-                  {active && (
-                    <div
-                      role="progressbar"
-                      aria-valuenow={Math.round(item.progress * 100)}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-ink/10"
-                    >
-                      <div
-                        className="h-full rounded-full bg-accent-fill transition-all"
-                        style={{
-                          width: `${Math.round(item.progress * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-                  {item.phase === "error" && item.error && (
-                    <p
-                      role="alert"
-                      className="mt-1 text-xs text-rose-600 dark:text-rose-300"
-                    >
-                      {item.error.message}
-                    </p>
-                  )}
+                  <FileDetails
+                    item={item}
+                    onRetryItem={onRetryItem}
+                    onRemoveItem={onRemoveItem}
+                  />
                 </td>
+                {rowIndex === 0 && noFolders && (
+                  <td
+                    rowSpan={rows.length}
+                    className="border-l border-line p-3"
+                  >
+                    {folderPlaceholder}
+                  </td>
+                )}
                 {groups.flatMap((group) =>
                   group.folders.map((folder, index) => {
                     const checked = row.folderIds.includes(folder.id);

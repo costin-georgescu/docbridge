@@ -108,8 +108,7 @@ export function JobComposer({
           />
         </div>
         <div className="min-h-0 min-w-0 flex-1 overflow-auto border-l border-line pl-4">
-          {summary.rows.length > 0 ? (
-            <MappingMatrix
+          <MappingMatrix
               rows={summary.rows}
               folders={folders}
               onToggleCell={(itemId, folderId) =>
@@ -142,11 +141,6 @@ export function JobComposer({
               onRetryItem={onRetryItem}
               onRemoveItem={onRemoveItem}
             />
-          ) : (
-            <p className="text-sm text-muted">
-              Add files above, then select destination folders.
-            </p>
-          )}
         </div>
       </div>
       <div className="mt-4 flex items-center gap-4 border-t border-line pt-4">
