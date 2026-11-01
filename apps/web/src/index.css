@@ -2,7 +2,6 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* DocBridge theme — porcelain light / clinical navy dark, cyan accent. */
 :root {
   --canvas: #f4f3ef;
   --surface: #ffffff;
@@ -39,7 +38,12 @@
   --color-accent-soft: var(--accent-soft);
 }
 
-/* Thin, muted scrollbars so scroll regions blend into the theme. */
+@layer base {
+  button:enabled {
+    cursor: pointer;
+  }
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;

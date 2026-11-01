@@ -194,6 +194,13 @@ export function MappingMatrix({
           </tr>
         </thead>
         <tbody>
+          {noFolders && (
+            <tr className="border-b border-line">
+              <td colSpan={2} className="py-3 text-sm text-muted">
+                Select destination folders in the tree.
+              </td>
+            </tr>
+          )}
           {rows.map((row) => {
             const item = row.item;
             const active = item.phase !== "staged" && item.phase !== "error";
@@ -275,11 +282,6 @@ export function MappingMatrix({
                     </p>
                   )}
                 </td>
-                {noFolders && (
-                  <td className="py-2 pr-4 text-sm text-muted">
-                    Select destination folders in the tree.
-                  </td>
-                )}
                 {groups.flatMap((group) =>
                   group.folders.map((folder, index) => {
                     const checked = row.folderIds.includes(folder.id);
