@@ -1,28 +1,33 @@
 import { describe, expect, it } from "@jest/globals";
 import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
-import { DocBridgeStack, CertStack } from "../lib/docbridge-stack";
+import {
+  DocBridgeStack,
+  CertStack,
+  type EnvironmentConfig,
+} from "../lib/docbridge-stack";
 
-const config = {
+const config: EnvironmentConfig = {
   domainName: "docbridge.example.com",
   hostedZoneId: "ZPLACEHOLDER1",
   account: "111111111111",
   region: "eu-central-1",
 };
 
-function synth() {
+function synth(overrides: Partial<typeof config> = {}) {
+  const cfg = { ...config, ...overrides };
   const app = new cdk.App();
   const cert = new CertStack(app, "DocBridgeCert-test", {
-    env: { account: config.account, region: "us-east-1" },
+    env: { account: cfg.account, region: "us-east-1" },
     crossRegionReferences: true,
     envName: "test",
-    domainName: config.domainName,
+    domainName: cfg.domainName,
   });
   const stack = new DocBridgeStack(app, "DocBridge-test", {
-    env: { account: config.account, region: config.region },
+    env: { account: cfg.account, region: cfg.region },
     crossRegionReferences: true,
     envName: "test",
-    config,
+    config: cfg,
     imageTag: "latest",
     webCertificateArn: cert.certificate.certificateArn,
   });
@@ -408,6 +413,21 @@ describe("database bootstrap task", () => {
 
   it("exports the task definition arn", () => {
     template.hasOutput("BootstrapTaskDef", { Value: Match.anyValue() });
+  });
+});
+
+describe("alarm email", () => {
+  it("creates an SNS email subscription when alarmEmail is set", () => {
+    const t = synth({ alarmEmail: "oncall@docbridge.example.com" });
+    t.resourceCountIs("AWS::SNS::Subscription", 1);
+    t.hasResourceProperties("AWS::SNS::Subscription", {
+      Protocol: "email",
+      Endpoint: "oncall@docbridge.example.com",
+    });
+  });
+
+  it("creates no subscription without alarmEmail", () => {
+    template.resourceCountIs("AWS::SNS::Subscription", 0);
   });
 });
 

@@ -20,6 +20,7 @@ import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as secrets from "aws-cdk-lib/aws-secretsmanager";
 import * as servicediscovery from "aws-cdk-lib/aws-servicediscovery";
 import * as sns from "aws-cdk-lib/aws-sns";
+import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 
 export interface EnvironmentConfig {
@@ -27,6 +28,7 @@ export interface EnvironmentConfig {
   hostedZoneId: string;
   account: string;
   region: string;
+  alarmEmail?: string;
 }
 
 interface ServiceSize {
@@ -233,7 +235,8 @@ export class DocBridgeStack extends cdk.Stack {
     const jwtSecret = new secrets.Secret(this, "JwtSigningKey", {
       secretName: `docbridge/${envName}/auth/jwt-signing-key`,
       encryptionKey: secretsKey,
-      description: "RS256 keypair for token signing; populated manually",
+      description:
+        "RS256 keypair for token signing; populated by `pnpm aws:jwt-key`",
     });
     const workerSecret = new secrets.Secret(this, "WorkerClientSecret", {
       secretName: `docbridge/${envName}/auth/worker-client-secret`,
@@ -893,6 +896,11 @@ export class DocBridgeStack extends cdk.Stack {
     const alarmTopic = new sns.Topic(this, "Alarms", {
       topicName: `docbridge-${envName}-alarms`,
     });
+    if (config.alarmEmail) {
+      alarmTopic.addSubscription(
+        new subscriptions.EmailSubscription(config.alarmEmail),
+      );
+    }
     const alarmAction = new cw_actions.SnsAction(alarmTopic);
     const addAlarm = (id: string, alarm: cloudwatch.Alarm) => {
       alarm.addAlarmAction(alarmAction);
