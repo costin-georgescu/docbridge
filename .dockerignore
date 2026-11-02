@@ -6,3 +6,11 @@ docs
 .env
 .env.*
 !.env.example
+cdk.out
+test-results
+playwright-report
+demo-files
+**/dist
+**/*.tsbuildinfo
+tests/perf/manifest.json
+tests/perf/chunks.txt
