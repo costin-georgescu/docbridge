@@ -68,6 +68,33 @@ describe("buckets", () => {
     template.resourceCountIs("AWS::S3::Bucket", 3);
   });
 
+  it("staging and platform buckets enable the SSE-KMS bucket key", () => {
+    for (const name of ["docbridge-staging", "docbridge-platform"]) {
+      template.hasResourceProperties("AWS::S3::Bucket", {
+        BucketName: Match.stringLikeRegexp(name),
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: Match.arrayWith([
+            Match.objectLike({ BucketKeyEnabled: true }),
+          ]),
+        },
+      });
+    }
+  });
+
+  it("platform bucket expires objects after platformRetentionDays", () => {
+    template.hasResourceProperties("AWS::S3::Bucket", {
+      BucketName: Match.stringLikeRegexp("docbridge-platform"),
+      LifecycleConfiguration: {
+        Rules: Match.arrayWith([
+          Match.objectLike({
+            ExpirationInDays: 30,
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+          }),
+        ]),
+      },
+    });
+  });
+
   it("staging and platform buckets use SSE-KMS", () => {
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketName: Match.stringLikeRegexp("docbridge-staging"),
@@ -103,6 +130,20 @@ describe("buckets", () => {
         ],
       },
     });
+  });
+});
+
+describe("VPC endpoints", () => {
+  it("has a free S3 gateway endpoint", () => {
+    const endpoints = Object.values(
+      template.findResources("AWS::EC2::VPCEndpoint"),
+    ) as { Properties: { VpcEndpointType?: string; ServiceName: unknown } }[];
+    const s3 = endpoints.filter(
+      (e) =>
+        e.Properties.VpcEndpointType === "Gateway" &&
+        JSON.stringify(e.Properties.ServiceName).includes("s3"),
+    );
+    expect(s3).toHaveLength(1);
   });
 });
 
@@ -457,6 +498,14 @@ describe("ECR repositories", () => {
     template.resourceCountIs("AWS::ECR::Repository", 0);
   });
 
+  it("keep at most 5 images per repo", () => {
+    reposTemplate.allResourcesProperties("AWS::ECR::Repository", {
+      LifecyclePolicy: {
+        LifecyclePolicyText: Match.stringLikeRegexp('"countNumber":5'),
+      },
+    });
+  });
+
   it("the main stack references them for task images", () => {
     const defs = Object.values(
       template.findResources("AWS::ECS::TaskDefinition"),
@@ -505,6 +554,121 @@ describe("alarm email", () => {
 
   it("creates no subscription without alarmEmail", () => {
     template.resourceCountIs("AWS::SNS::Subscription", 0);
+  });
+});
+
+describe("spend alerts", () => {
+  const withEmail = (extra: Partial<typeof config> = {}) =>
+    synth({
+      config: { alarmEmail: "oncall@docbridge.example.com", ...extra },
+    }).main;
+
+  it("creates a monthly cost budget with actual+forecast thresholds", () => {
+    const t = withEmail();
+    t.resourceCountIs("AWS::Budgets::Budget", 1);
+    t.hasResourceProperties("AWS::Budgets::Budget", {
+      Budget: {
+        BudgetType: "COST",
+        TimeUnit: "MONTHLY",
+        BudgetLimit: { Amount: 100, Unit: "USD" },
+        // gross spend: credits/refunds excluded so alerts fire while the
+        // free-credit balance is still burning down
+        CostTypes: { IncludeCredit: false, IncludeRefund: false },
+      },
+      NotificationsWithSubscribers: Match.arrayWith([
+        Match.objectLike({
+          Notification: Match.objectLike({
+            NotificationType: "ACTUAL",
+            Threshold: 80,
+          }),
+        }),
+        Match.objectLike({
+          Notification: Match.objectLike({
+            NotificationType: "FORECASTED",
+            Threshold: 100,
+          }),
+        }),
+      ]),
+    });
+    const budget = Object.values(
+      t.findResources("AWS::Budgets::Budget"),
+    )[0] as {
+      Properties: {
+        NotificationsWithSubscribers: {
+          Notification: { NotificationType: string; Threshold: number };
+        }[];
+      };
+    };
+    expect(
+      budget.Properties.NotificationsWithSubscribers.map(
+        (n) => `${n.Notification.NotificationType}:${n.Notification.Threshold}`,
+      ).sort(),
+    ).toEqual(["ACTUAL:100", "ACTUAL:50", "ACTUAL:80", "FORECASTED:100"]);
+  });
+
+  it("honours a monthlyBudgetUsd override", () => {
+    withEmail({ monthlyBudgetUsd: 123 }).hasResourceProperties(
+      "AWS::Budgets::Budget",
+      { Budget: { BudgetLimit: { Amount: 123, Unit: "USD" } } },
+    );
+  });
+
+  it("creates cost anomaly monitor + subscription", () => {
+    const t = withEmail();
+    t.resourceCountIs("AWS::CE::AnomalyMonitor", 1);
+    t.hasResourceProperties("AWS::CE::AnomalyMonitor", {
+      MonitorType: "DIMENSIONAL",
+      MonitorDimension: "SERVICE",
+    });
+    t.resourceCountIs("AWS::CE::AnomalySubscription", 1);
+    t.hasResourceProperties("AWS::CE::AnomalySubscription", {
+      Frequency: "DAILY",
+      Subscribers: [{ Type: "EMAIL", Address: "oncall@docbridge.example.com" }],
+      ThresholdExpression: Match.stringLikeRegexp(
+        "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+      ),
+    });
+    const sub = Object.values(
+      t.findResources("AWS::CE::AnomalySubscription"),
+    )[0] as { Properties: { ThresholdExpression: string } };
+    expect(JSON.parse(sub.Properties.ThresholdExpression)).toEqual({
+      Dimensions: {
+        Key: "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+        Values: ["5"],
+        MatchOptions: ["GREATER_THAN_OR_EQUAL"],
+      },
+    });
+  });
+
+  it("creates no spend alerts without alarmEmail", () => {
+    template.resourceCountIs("AWS::Budgets::Budget", 0);
+    template.resourceCountIs("AWS::CE::AnomalyMonitor", 0);
+    template.resourceCountIs("AWS::CE::AnomalySubscription", 0);
+  });
+});
+
+describe("seed password", () => {
+  it("generates a Secrets Manager seed password", () => {
+    template.hasResourceProperties("AWS::SecretsManager::Secret", {
+      Name: "docbridge/test/seed-password",
+      GenerateSecretString: Match.objectLike({
+        PasswordLength: 24,
+        ExcludePunctuation: true,
+      }),
+    });
+  });
+
+  it("injects SEED_PASSWORD into the seed task container", () => {
+    template.hasResourceProperties("AWS::ECS::TaskDefinition", {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Name: "seed",
+          Secrets: Match.arrayWith([
+            Match.objectLike({ Name: "SEED_PASSWORD" }),
+          ]),
+        }),
+      ]),
+    });
   });
 });
 

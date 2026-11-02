@@ -22,12 +22,14 @@ describe("presignPutObject", () => {
       bucket: "docbridge-staging",
       key: "staged/user/file",
       contentType: "application/pdf",
+      contentLength: 1234,
       checksumCrc32c: "AAAAAA==",
       expiresIn: 900,
     });
     const u = new URL(url);
     const signed = u.searchParams.get("X-Amz-SignedHeaders") ?? "";
     expect(signed).toContain("content-type");
+    expect(signed).toContain("content-length");
     expect(signed).toContain("x-amz-checksum-crc32c");
     expect(u.searchParams.get("X-Amz-Expires")).toBe("900");
     // the checksum must be a header, not a query param
@@ -36,6 +38,8 @@ describe("presignPutObject", () => {
     for (const key of u.searchParams.keys()) {
       expect(key).not.toContain("x-amz-checksum-crc32");
     }
+    // Content-Length is signed but never returned to the client — browsers
+    // forbid setting it and send it automatically.
     expect(headers).toEqual({
       "Content-Type": "application/pdf",
       "x-amz-checksum-crc32c": "AAAAAA==",
@@ -50,6 +54,7 @@ describe("presignUploadPart", () => {
       key: "staged/user/file",
       uploadId: "upload-123",
       partNumber: 3,
+      contentLength: 16777216,
       checksumCrc32c: "BBBBBB==",
       expiresIn: 3600,
     });
@@ -58,6 +63,7 @@ describe("presignUploadPart", () => {
     expect(u.searchParams.get("uploadId")).toBe("upload-123");
     expect(u.searchParams.get("X-Amz-Expires")).toBe("3600");
     const signed = u.searchParams.get("X-Amz-SignedHeaders") ?? "";
+    expect(signed).toContain("content-length");
     expect(signed).toContain("x-amz-checksum-crc32c");
     for (const key of u.searchParams.keys()) {
       expect(key).not.toContain("x-amz-checksum-crc32");

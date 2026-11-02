@@ -78,7 +78,9 @@ variables → Actions → **Variables**:
 ```
 
 `hostedZoneId` is the Route 53 zone id from Step 0 (`alarmEmail` optional —
-subscribes that address to the alarm topic; confirm the SNS email).
+subscribes that address to the alarm topic AND enables the spend alerts
+below; confirm the SNS email). `monthlyBudgetUsd` is optional too and
+overrides the default $100 monthly budget used by the spend alerts.
 You may list only the environments you care about.
 
 Or, for local-only deploys, export the same JSON:
@@ -124,10 +126,17 @@ Subsequent deploys are the same workflow without `first_deploy` — see
 
 - `curl https://api.<domain>/health` → `{"status":"ok"}`.
 - Open `https://app.<domain>` and log in. The seed (`--seed`, staging)
-  creates these accounts — the password is `password123` for all of them
-  (hardcoded in `scripts/seed.ts` / `scripts/demo-seed.ts`; the task logs
-  also print a "grader handout" with the same credentials in the
-  `/docbridge/<env>/seed` log group — change/remove for anything real):
+  creates these accounts — the password is generated per environment and
+  stored in Secrets Manager; read it with:
+
+  ```bash
+  aws secretsmanager get-secret-value \
+    --secret-id docbridge/<env>/seed-password --query SecretString --output text
+  ```
+
+  (the same value is injected into the seed task as `SEED_PASSWORD`; the
+  task logs also print a "grader handout" with it in the
+  `/docbridge/<env>/seed` log group):
   `admin@docbridge.local` (admin), `demo@docbridge.local`,
   `anna@docbridge.local`, `ben@docbridge.local`.
 - Confirm the SNS subscription email (click the confirm link) if you set
@@ -167,7 +176,7 @@ Subsequent deploys are the same workflow without `first_deploy` — see
   back to an older image, re-run an older workflow run, or locally
   `pnpm --filter @docbridge/infra exec cdk deploy DocBridge-<env>
 -c environment=<env> -c imageTag=<old-sha> --require-approval never` —
-  the old sha image must still exist in ECR (last 20 are kept).
+  the old sha image must still exist in ECR (last 5 are kept).
 
 ## Troubleshooting
 
@@ -189,9 +198,32 @@ Subsequent deploys are the same workflow without `first_deploy` — see
 
 Biggest standing items: single NAT gateway + NAT data processing, Multi-AZ
 `t4g.medium` RDS, the ALB, four KMS CMKs, and 10 Fargate tasks (2 each).
-Staging costs real money while idle — prefer `cdk destroy` or scaled-down
-counts when not in use. (No figures quoted; they change — check Cost
-Explorer after the first week.)
+**None of these are free-tier eligible** — a running environment costs real
+money while idle, so tear it down (`cdk destroy`, see below) or scale
+services to 0 as soon as a review is done; do not leave it running.
+
+When `alarmEmail` is set the stack also creates spend alerts: an AWS
+Budgets monthly cost budget (`monthlyBudgetUsd`, default $100) emailing at
+50%/80%/100% of actual and 100% of forecasted spend, plus Cost Anomaly
+Detection (per-service monitor, daily digest on anomalies >= $5 impact).
+The budget tracks **gross usage** — credits and refunds are excluded —
+so the alerts keep working while a free-credit balance burns down.
+
+Caveats: Budgets **alert only — they cannot cap or stop spend**, and
+billing data lags roughly 8–24h, so a budget mail can arrive well after
+the spend happened. Credits also don't cover every charge type (e.g.
+Marketplace purchases, some support/tax items), so real billing can start
+before the credit balance hits zero. If a budget mail arrives — or the
+review is over — tear the stack down (`cdk destroy`, below) or scale
+services to zero.
+
+Other cost guards baked in: a free S3 gateway VPC endpoint keeps S3
+traffic off the NAT, SSE-KMS bucket keys cut KMS request charges, the
+platform bucket expires delivered objects after 30 days (deviation from
+keep-forever), ECR keeps only 5 images per repo, and a signed
+Content-Length + staged-file quotas bound what uploaders can store.
+(No figures quoted; they change — check Cost Explorer after the first
+week.)
 
 ## Teardown
 

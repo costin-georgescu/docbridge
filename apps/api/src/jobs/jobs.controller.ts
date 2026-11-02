@@ -83,6 +83,14 @@ export class JobsController {
     @Param("id") id: string,
     @Param("fileId") fileId: string,
   ): Promise<JobFileDownloadResponse> {
+    if (
+      !this.rateLimit.hit("jobs:download", claims.sub, {
+        limit: config.RATE_LIMIT_DOWNLOADS_PER_MIN,
+        windowMs: MINUTE_MS,
+      })
+    ) {
+      throw new AppError(429, "too_many_requests", "Too many requests");
+    }
     return this.jobs.downloadFile(claims, id, fileId);
   }
 }

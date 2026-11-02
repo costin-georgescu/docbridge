@@ -41,7 +41,9 @@ const s3 = new S3Client({
 });
 
 const DEMO_USER_ID = "00000000-0000-7000-8000-00000000d001";
-const DEMO_PASSWORD = "password123";
+// SEED_PASSWORD is injected from Secrets Manager on AWS; the default
+// keeps local dev/e2e behaviour unchanged.
+const DEMO_PASSWORD = process.env.SEED_PASSWORD ?? "password123";
 const uuid = (n: number) =>
   `00000000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`;
 const fileId = (n: number) => uuid(0xd100 + n);

@@ -41,12 +41,22 @@ function validate(name: string, raw: unknown): EnvironmentConfig {
   ) {
     fail(name, "alarmEmail", "must be an email address (single @)");
   }
+  const monthlyBudgetUsd = c.monthlyBudgetUsd;
+  if (
+    monthlyBudgetUsd !== undefined &&
+    (typeof monthlyBudgetUsd !== "number" ||
+      !Number.isFinite(monthlyBudgetUsd) ||
+      monthlyBudgetUsd <= 0)
+  ) {
+    fail(name, "monthlyBudgetUsd", "must be a positive finite number");
+  }
   return {
     domainName: c.domainName as string,
     hostedZoneId: c.hostedZoneId as string,
     account: c.account as string,
     region: c.region as string,
     alarmEmail: alarmEmail as string | undefined,
+    monthlyBudgetUsd: monthlyBudgetUsd as number | undefined,
   };
 }
 

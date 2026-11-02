@@ -69,6 +69,10 @@ describe("resolveEnvironments", () => {
     ["region", { region: "europe1" }],
     ["alarmEmail", { alarmEmail: "a@b@c" }],
     ["alarmEmail", { alarmEmail: "not-an-email" }],
+    ["monthlyBudgetUsd", { monthlyBudgetUsd: 0 }],
+    ["monthlyBudgetUsd", { monthlyBudgetUsd: -10 }],
+    ["monthlyBudgetUsd", { monthlyBudgetUsd: Number.POSITIVE_INFINITY }],
+    ["monthlyBudgetUsd", { monthlyBudgetUsd: Number.NaN }],
   ])("rejects invalid %s", (field, bad) => {
     const envs = { staging: { ...STAGING, ...bad } };
     expect(() => resolveEnvironments({ context: envs, env: {} })).toThrow(
@@ -78,6 +82,13 @@ describe("resolveEnvironments", () => {
 
   it("accepts the placeholder values used for offline synth", () => {
     expect(() => resolve({})).not.toThrow();
+  });
+
+  it("accepts a valid monthlyBudgetUsd", () => {
+    const envs = {
+      staging: { ...STAGING, monthlyBudgetUsd: 75 },
+    };
+    expect(resolveEnvironments({ context: envs, env: {} })).toEqual(envs);
   });
 
   it("accepts a valid alarmEmail", () => {

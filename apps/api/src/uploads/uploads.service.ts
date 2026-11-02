@@ -17,6 +17,7 @@ import {
 } from "@docbridge/contracts";
 import { presignPutObject, presignUploadPart } from "@docbridge/storage";
 import { AppError } from "../common/app-error";
+import { config } from "../config";
 import { PrismaService } from "../prisma/prisma.service";
 import { StagingStorage } from "../storage/staging-storage.service";
 import { planUpload } from "./upload-plan";
@@ -44,6 +45,29 @@ export class UploadsService {
     }
     if (req.sizeBytes > MAX_UPLOAD_BYTES) {
       throw new AppError(413, "file_too_large", "File exceeds the 1 GiB limit");
+    }
+    // Per-user unsubmitted quota: staged files not yet claimed by a job
+    // still hold (or may still receive) real S3 bytes.
+    const unsubmitted = await this.prisma.db.stagedFile.aggregate({
+      where: {
+        ownerUserId,
+        jobId: null,
+        status: { in: ["pending_upload", "staged"] },
+      },
+      _sum: { sizeBytes: true },
+      _count: { _all: true },
+    });
+    const unsubmittedBytes = unsubmitted._sum.sizeBytes ?? 0n;
+    if (
+      unsubmitted._count._all >= config.MAX_USER_UNSUBMITTED_FILES ||
+      unsubmittedBytes + BigInt(req.sizeBytes) >
+        BigInt(config.MAX_USER_UNSUBMITTED_BYTES)
+    ) {
+      throw new AppError(
+        413,
+        "quota_exceeded",
+        "Unsubmitted upload quota exceeded",
+      );
     }
     const fileId = uuidv7();
     const storageKey = `staged/${ownerUserId}/${fileId}`;
@@ -73,6 +97,7 @@ export class UploadsService {
         bucket: this.storage.bucket,
         key: storageKey,
         contentType: req.contentType,
+        contentLength: req.sizeBytes,
         checksumCrc32c: req.checksumCrc32c,
         expiresIn: PUT_URL_TTL_SECONDS,
       });
@@ -122,11 +147,16 @@ export class UploadsService {
     });
     const parts = await Promise.all(
       Array.from({ length: plan.partCount }, async (_, i) => {
+        const contentLength =
+          i + 1 < plan.partCount
+            ? plan.partSizeBytes
+            : req.sizeBytes - (plan.partCount - 1) * plan.partSizeBytes;
         const { url, headers } = await presignUploadPart(this.storage.presign, {
           bucket: this.storage.bucket,
           key: storageKey,
           uploadId,
           partNumber: i + 1,
+          contentLength,
           checksumCrc32c: req.partChecksumsCrc32c![i],
           expiresIn: PART_URL_TTL_SECONDS,
         });

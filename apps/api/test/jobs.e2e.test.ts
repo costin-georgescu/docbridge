@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { ResolveFoldersResponse } from "@docbridge/contracts";
 import { createClient, PrismaClient } from "@docbridge/db-docbridge";
 import { AppError } from "../src/common/app-error";
+import { config } from "../src/config";
 import { PlatformClient } from "../src/platform/platform-client";
 import {
   bootApp,
@@ -259,6 +260,32 @@ run("jobs e2e", () => {
       .send({ mappings: [{ fileId, folderIds: [randomUUID()] }] })
       .expect(503);
     expect(res.body.error.code).toBe("platform_unavailable");
+  });
+
+  it("rolls back when delivered bytes exceed MAX_JOB_DELIVERED_BYTES", async () => {
+    const original = config.MAX_JOB_DELIVERED_BYTES;
+    config.MAX_JOB_DELIVERED_BYTES = 15;
+    try {
+      const token = await userToken(OWNER_A);
+      const fileId = await seedStagedFile(OWNER_A); // sizeBytes 10
+      const folder1 = randomUUID();
+      const folder2 = randomUUID();
+      platformResolve = resolvingAll({
+        [folder1]: { teamId: TEAM_1, path: "Team1/B/In" },
+        [folder2]: { teamId: TEAM_2, path: "Team2/B/Out" },
+      });
+      // 10 bytes x 2 folders = 20 delivered bytes > 15.
+      const res = await api()
+        .post("/api/jobs")
+        .set(bearer(token))
+        .send({ mappings: [{ fileId, folderIds: [folder1, folder2] }] })
+        .expect(422);
+      expect(res.body.error.code).toBe("limits_exceeded");
+      expect(res.body.error.details.violations).toEqual(["job_too_large"]);
+      await expectNothingCommitted(fileId);
+    } finally {
+      config.MAX_JOB_DELIVERED_BYTES = original;
+    }
   });
 
   it("creates a job atomically: job, job_teams, claimed files and tasks", async () => {

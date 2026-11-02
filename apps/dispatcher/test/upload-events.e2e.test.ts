@@ -6,6 +6,7 @@ import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
@@ -115,6 +116,15 @@ run("upload-events e2e", () => {
     insertedKeys.push(key);
   }
 
+  async function objectExists(key: string) {
+    try {
+      await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function statusOf(id: string) {
     return db.stagedFile.findUniqueOrThrow({ where: { id } });
   }
@@ -203,6 +213,8 @@ run("upload-events e2e", () => {
 
     expect(await consumer.handleMessage(msg(s3Event(key)))).toBe(true);
     expect((await statusOf(id)).status).toBe("pending_upload");
+    // the mismatched object is deleted — it can never satisfy the record
+    expect(await objectExists(key)).toBe(false);
   });
 
   it("leaves pending_upload when the size differs", async () => {
@@ -215,6 +227,7 @@ run("upload-events e2e", () => {
 
     expect(await consumer.handleMessage(msg(s3Event(key)))).toBe(true);
     expect((await statusOf(id)).status).toBe("pending_upload");
+    expect(await objectExists(key)).toBe(false);
   });
 
   it("handles an event for an unknown file id", async () => {

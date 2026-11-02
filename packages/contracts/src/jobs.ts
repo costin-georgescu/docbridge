@@ -169,7 +169,8 @@ export type JobLimitViolation =
   | "too_many_files"
   | "too_many_folders"
   | "too_many_tasks"
-  | "file_without_folder";
+  | "file_without_folder"
+  | "job_too_large";
 
 export function checkJobLimits(
   mappings: { fileId: string; folderIds: string[] }[],

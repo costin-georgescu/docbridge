@@ -8,6 +8,7 @@ export const ErrorCode = z.enum([
   "invalid_refresh",
   "unsupported_file_type",
   "file_too_large",
+  "quota_exceeded",
   "validation_error",
   "checksum_mismatch",
   "not_multipart",

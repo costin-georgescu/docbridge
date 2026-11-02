@@ -11,3 +11,4 @@ process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 process.env.RATE_LIMIT_JOBS_PER_MIN ??= "10000";
 process.env.RATE_LIMIT_UPLOADS_PER_MIN ??= "10000";
+process.env.RATE_LIMIT_DOWNLOADS_PER_MIN ??= "10000";

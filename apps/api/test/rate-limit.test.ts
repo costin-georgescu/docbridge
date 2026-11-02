@@ -58,6 +58,32 @@ describe("api rate limits", () => {
     }
   });
 
+  it("GET /api/jobs/:id/files/:fileId/download returns 429 past RATE_LIMIT_DOWNLOADS_PER_MIN", () => {
+    const undo = restore("RATE_LIMIT_DOWNLOADS_PER_MIN");
+    try {
+      config.RATE_LIMIT_DOWNLOADS_PER_MIN = 2;
+      const downloadFile = jest
+        .fn<() => Promise<unknown>>()
+        .mockResolvedValue({ url: "u" });
+      const controller = new JobsController(
+        { downloadFile } as unknown as JobsService,
+        new RateLimiterRegistry(),
+      );
+      controller.downloadFile(claims, "j", "f");
+      controller.downloadFile(claims, "j", "f");
+      throwsWithCode(
+        () => controller.downloadFile(claims, "j", "f"),
+        "too_many_requests",
+      );
+      // A different user still has budget.
+      const other = { sub: "user-2", teams: [] } as never;
+      controller.downloadFile(other, "j", "f");
+      expect(downloadFile).toHaveBeenCalledTimes(3);
+    } finally {
+      undo();
+    }
+  });
+
   it("POST /api/uploads* shares one per-user budget across create and complete", () => {
     const undo = restore("RATE_LIMIT_UPLOADS_PER_MIN");
     try {

@@ -19,6 +19,7 @@ import {
 import { Prisma, type TaskStatus } from "@docbridge/db-docbridge";
 import { presignGetObject } from "@docbridge/storage";
 import { AppError } from "../common/app-error";
+import { config } from "../config";
 import { PlatformClient } from "../platform/platform-client";
 import { PrismaService } from "../prisma/prisma.service";
 import { StagingStorage } from "../storage/staging-storage.service";
@@ -102,7 +103,9 @@ export class JobsService {
         const idList = Prisma.Prisma.join(
           fileIds.map((id) => Prisma.Prisma.sql`${id}::uuid`),
         );
-        const claimed = await tx.$queryRaw<{ id: string }[]>`
+        const claimed = await tx.$queryRaw<
+          { id: string; size_bytes: bigint }[]
+        >`
           UPDATE staged_files
           SET job_id = ${jobId}::uuid
           WHERE id IN (${idList})
@@ -110,9 +113,24 @@ export class JobsService {
             AND status = 'staged'
             AND job_id IS NULL
             AND staged_at > now() - interval '24 hours'
-          RETURNING id`;
+          RETURNING id, size_bytes`;
         if (claimed.length !== fileIds.length) {
           throw new ClaimMismatch();
+        }
+        // Delivered-bytes cap: each file lands in every mapped folder, so
+        // platform storage grows by sizeBytes x folder count per file.
+        const foldersPerFile = new Map(
+          mappings.map((m) => [m.fileId, m.folderIds.length]),
+        );
+        let deliveredBytes = 0n;
+        for (const row of claimed) {
+          deliveredBytes +=
+            row.size_bytes * BigInt(foldersPerFile.get(row.id) ?? 0);
+        }
+        if (deliveredBytes > BigInt(config.MAX_JOB_DELIVERED_BYTES)) {
+          throw new AppError(422, "limits_exceeded", "Job limits exceeded", {
+            violations: ["job_too_large"],
+          });
         }
         // One INSERT over unnested column arrays: at the 2,000-task limit a
         // per-row createMany costs far more client CPU than a single

@@ -6,6 +6,7 @@ export interface PresignUploadPartOptions {
   key: string;
   uploadId: string;
   partNumber: number;
+  contentLength: number;
   checksumCrc32c: string;
   expiresIn: number;
 }
@@ -19,10 +20,14 @@ export async function presignUploadPart(
     Key: options.key,
     UploadId: options.uploadId,
     PartNumber: options.partNumber,
+    ContentLength: options.contentLength,
     ChecksumCRC32C: options.checksumCrc32c,
   });
   const url = await getSignedUrl(client, command, {
     expiresIn: options.expiresIn,
+    // content-length stays signed but is NOT handed back to the client:
+    // browsers forbid setting it explicitly and send it automatically.
+    signableHeaders: new Set(["content-length"]),
     unhoistableHeaders: new Set(["x-amz-checksum-crc32c"]),
   });
   return {

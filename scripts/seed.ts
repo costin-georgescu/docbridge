@@ -104,7 +104,11 @@ async function seedPlatform() {
 
 async function seedAuth() {
   const db = createAuthClient(authUrl!);
-  const passwordHash = await argon2.hash("password123");
+  // SEED_PASSWORD is injected from Secrets Manager on AWS; the default
+  // keeps local dev/e2e behaviour unchanged.
+  const passwordHash = await argon2.hash(
+    process.env.SEED_PASSWORD ?? "password123",
+  );
   const users = [
     {
       email: "admin@docbridge.local",

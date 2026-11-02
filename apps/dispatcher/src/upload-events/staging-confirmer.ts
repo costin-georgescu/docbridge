@@ -1,5 +1,9 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { HeadObjectCommand, S3ServiceException } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  S3ServiceException,
+} from "@aws-sdk/client-s3";
 import { PrismaService } from "../prisma/prisma.service";
 import { StagingStorage } from "../storage/staging-storage.service";
 
@@ -60,7 +64,17 @@ export class StagingConfirmer {
       this.logger.warn(
         `file ${fileId}: object does not match record ` +
           `(checksum expected ${record.checksumCrc32c} got ${head.ChecksumCRC32C}, ` +
-          `size expected ${record.sizeBytes} got ${head.ContentLength}) — leaving pending_upload`,
+          `size expected ${record.sizeBytes} got ${head.ContentLength}) — ` +
+          `deleting object, leaving pending_upload`,
+      );
+      // The object can never satisfy the record (checksum and size are
+      // immutable at PUT time), so drop it instead of paying for the
+      // storage until the lifecycle rule would. TDD 5.5: no keys in logs.
+      await this.storage.s3.send(
+        new DeleteObjectCommand({
+          Bucket: this.storage.bucket,
+          Key: record.storageKey,
+        }),
       );
       return "mismatch";
     }

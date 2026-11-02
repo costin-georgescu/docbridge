@@ -1,6 +1,8 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as budgets from "aws-cdk-lib/aws-budgets";
+import * as ce from "aws-cdk-lib/aws-ce";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
@@ -29,6 +31,7 @@ export interface EnvironmentConfig {
   account: string;
   region: string;
   alarmEmail?: string;
+  monthlyBudgetUsd?: number;
 }
 
 interface ServiceSize {
@@ -51,6 +54,10 @@ const Parameters = {
   rdsInstanceType: "t4g.medium",
   stagedRetentionDays: 32,
   multipartAbortDays: 7,
+  platformRetentionDays: 30,
+  // Gross-spend budget: credits excluded below, so $100 of alerts leaves
+  // margin for the ~day of billing-data lag before the $200 credit cap.
+  defaultMonthlyBudgetUsd: 100,
 } as const;
 
 // RDS enforces rds.force_ssl; the RDS CA is not in Node's trust store and
@@ -108,7 +115,7 @@ export class ReposStack extends cdk.Stack {
         new ecr.Repository(this, `Repo-${name}`, {
           repositoryName: `docbridge/${name}`,
           imageScanOnPush: true,
-          lifecycleRules: [{ maxImageCount: 20 }],
+          lifecycleRules: [{ maxImageCount: 5 }],
           removalPolicy: cdk.RemovalPolicy.DESTROY,
           emptyOnDelete: true,
         }),
@@ -144,6 +151,11 @@ export class DocBridgeStack extends cdk.Stack {
         { name: "public", subnetType: ec2.SubnetType.PUBLIC },
         { name: "private", subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       ],
+    });
+    // Free gateway endpoint: S3 traffic stays off the NAT gateway (NAT
+    // data processing is charged per GB).
+    vpc.addGatewayEndpoint("S3Endpoint", {
+      service: ec2.GatewayVpcEndpointAwsService.S3,
     });
 
     // ---------- DNS + certificates ----------
@@ -205,6 +217,7 @@ export class DocBridgeStack extends cdk.Stack {
       bucketName: `docbridge-staging-${envName}-${config.account}`,
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: stagingKey,
+      bucketKeyEnabled: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [
@@ -241,8 +254,17 @@ export class DocBridgeStack extends cdk.Stack {
       bucketName: `docbridge-platform-${envName}-${config.account}`,
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: platformKey,
+      bucketKeyEnabled: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
+      lifecycleRules: [
+        {
+          abortIncompleteMultipartUploadAfter: cdk.Duration.days(
+            Parameters.multipartAbortDays,
+          ),
+          expiration: cdk.Duration.days(Parameters.platformRetentionDays),
+        },
+      ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
@@ -282,6 +304,14 @@ export class DocBridgeStack extends cdk.Stack {
       secretName: `docbridge/${envName}/auth/worker-client-secret`,
       encryptionKey: secretsKey,
       generateSecretString: { excludePunctuation: true },
+    });
+    // Seed/demo account password — generated per environment instead of
+    // the hardcoded local default ("password123"), which must never ship
+    // to a real deployment.
+    const seedPassword = new secrets.Secret(this, "SeedPassword", {
+      secretName: `docbridge/${envName}/seed-password`,
+      encryptionKey: secretsKey,
+      generateSecretString: { excludePunctuation: true, passwordLength: 24 },
     });
 
     // ---------- RDS ----------
@@ -773,6 +803,7 @@ export class DocBridgeStack extends cdk.Stack {
       secret.grantRead(seedRole);
     }
     workerSecret.grantRead(seedRole);
+    seedPassword.grantRead(seedRole);
     secretsKey.grantDecrypt(seedRole);
     stagingBucket.grantPut(seedRole, "staged/*");
     platformBucket.grantPut(seedRole, "versions/*");
@@ -832,6 +863,7 @@ export class DocBridgeStack extends cdk.Stack {
           "password",
         ),
         WORKER_CLIENT_SECRET: ecs.Secret.fromSecretsManager(workerSecret),
+        SEED_PASSWORD: ecs.Secret.fromSecretsManager(seedPassword),
       },
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: "seed",
@@ -936,6 +968,65 @@ export class DocBridgeStack extends cdk.Stack {
       alarmTopic.addSubscription(
         new subscriptions.EmailSubscription(config.alarmEmail),
       );
+
+      // ---------- Spend alerts ----------
+      // Budgets only notify — they cannot cap spend. Created only when an
+      // alarm email exists because a budget needs a subscriber.
+      const email = config.alarmEmail;
+      const budgetNotifications = [50, 80, 100].map((threshold) => ({
+        notification: {
+          notificationType: "ACTUAL",
+          comparisonOperator: "GREATER_THAN",
+          threshold,
+          thresholdType: "PERCENTAGE",
+        },
+        subscribers: [{ subscriptionType: "EMAIL", address: email }],
+      }));
+      budgetNotifications.push({
+        notification: {
+          notificationType: "FORECASTED",
+          comparisonOperator: "GREATER_THAN",
+          threshold: 100,
+          thresholdType: "PERCENTAGE",
+        },
+        subscribers: [{ subscriptionType: "EMAIL", address: email }],
+      });
+      new budgets.CfnBudget(this, "MonthlyBudget", {
+        budget: {
+          budgetType: "COST",
+          timeUnit: "MONTHLY",
+          // Track gross spend: the default costTypes include credits, which
+          // would show ~$0 while the free-credit balance burns down.
+          costTypes: { includeCredit: false, includeRefund: false },
+          budgetLimit: {
+            amount:
+              config.monthlyBudgetUsd ?? Parameters.defaultMonthlyBudgetUsd,
+            unit: "USD",
+          },
+        },
+        notificationsWithSubscribers: budgetNotifications,
+      });
+
+      // Cost Anomaly Detection: catch spend spikes the monthly budget
+      // cadence would notice too late.
+      const anomalyMonitor = new ce.CfnAnomalyMonitor(this, "SpendMonitor", {
+        monitorName: `docbridge-${envName}-services`,
+        monitorType: "DIMENSIONAL",
+        monitorDimension: "SERVICE",
+      });
+      new ce.CfnAnomalySubscription(this, "SpendAnomalyAlerts", {
+        subscriptionName: `docbridge-${envName}-spend-anomalies`,
+        frequency: "DAILY",
+        monitorArnList: [anomalyMonitor.attrMonitorArn],
+        subscribers: [{ type: "EMAIL", address: email }],
+        thresholdExpression: JSON.stringify({
+          Dimensions: {
+            Key: "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+            Values: ["5"],
+            MatchOptions: ["GREATER_THAN_OR_EQUAL"],
+          },
+        }),
+      });
     }
     const alarmAction = new cw_actions.SnsAction(alarmTopic);
     const addAlarm = (id: string, alarm: cloudwatch.Alarm) => {

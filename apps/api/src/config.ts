@@ -16,6 +16,20 @@ export const envSchema = baseEnvSchema.extend({
   // 100-file job's upload burst stays well under the uploads cap.
   RATE_LIMIT_JOBS_PER_MIN: z.coerce.number().int().min(0).default(30),
   RATE_LIMIT_UPLOADS_PER_MIN: z.coerce.number().int().min(0).default(120),
+  RATE_LIMIT_DOWNLOADS_PER_MIN: z.coerce.number().int().min(0).default(30),
+  // Per-user spend guards: unsubmitted staged files still cost S3 storage;
+  // delivered bytes cap what one job multiplies into the platform.
+  MAX_USER_UNSUBMITTED_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 ** 3),
+  MAX_USER_UNSUBMITTED_FILES: z.coerce.number().int().positive().default(500),
+  MAX_JOB_DELIVERED_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(20 * 1024 ** 3),
 });
 
 export const config = loadConfig(envSchema);

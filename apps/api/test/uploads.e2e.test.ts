@@ -11,6 +11,7 @@ import {
   PART_SIZE_BYTES,
 } from "@docbridge/contracts";
 import { createClient, PrismaClient } from "@docbridge/db-docbridge";
+import { config } from "../src/config";
 import {
   bootApp,
   makeKeypair,
@@ -214,6 +215,12 @@ run("uploads e2e", () => {
     expect(res.body.mode).toBe("single");
     expect(res.body.headers["Content-Type"]).toBe("application/pdf");
     expect(res.body.headers["x-amz-checksum-crc32c"]).toBe(checksum);
+    // Content-Length is signed (uploaded bytes are pinned to sizeBytes)
+    // but never handed to the client — the browser sends it itself.
+    expect(
+      new URL(res.body.url).searchParams.get("X-Amz-SignedHeaders"),
+    ).toContain("content-length");
+    expect(res.body.headers["Content-Length"]).toBeUndefined();
     expect(new Date(res.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
 
     const row = await db.stagedFile.findUnique({
@@ -281,6 +288,10 @@ run("uploads e2e", () => {
       expect(part.headers["x-amz-checksum-crc32c"]).toBe(
         partChecksumsCrc32c[i],
       );
+      expect(
+        new URL(part.url).searchParams.get("X-Amz-SignedHeaders"),
+      ).toContain("content-length");
+      expect(part.headers["Content-Length"]).toBeUndefined();
       const r = await put(part.url, { body: parts[i], headers: part.headers });
       expect(r.status).toBe(200);
       etags.push({
@@ -415,6 +426,65 @@ run("uploads e2e", () => {
       })
       .expect(422);
     expect(dup.body.error.code).toBe("validation_error");
+  });
+
+  it("rejects uploads past MAX_USER_UNSUBMITTED_FILES with 413 quota_exceeded", async () => {
+    const owner = randomUUID();
+    const token = await userToken(owner);
+    const original = config.MAX_USER_UNSUBMITTED_FILES;
+    config.MAX_USER_UNSUBMITTED_FILES = 1;
+    try {
+      await createUpload(token, {
+        fileName: "first.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 10,
+        checksumCrc32c: "AAAAAA==",
+      });
+      const res = await createUpload(
+        token,
+        {
+          fileName: "second.pdf",
+          contentType: "application/pdf",
+          sizeBytes: 10,
+          checksumCrc32c: "AAAAAA==",
+        },
+        413,
+      );
+      expect(res.body.error.code).toBe("quota_exceeded");
+    } finally {
+      config.MAX_USER_UNSUBMITTED_FILES = original;
+      await db.stagedFile.deleteMany({ where: { ownerUserId: owner } });
+    }
+  });
+
+  it("rejects uploads past MAX_USER_UNSUBMITTED_BYTES with 413 quota_exceeded", async () => {
+    const owner = randomUUID();
+    const token = await userToken(owner);
+    const original = config.MAX_USER_UNSUBMITTED_BYTES;
+    config.MAX_USER_UNSUBMITTED_BYTES = 15;
+    try {
+      await createUpload(token, {
+        fileName: "small.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 10,
+        checksumCrc32c: "AAAAAA==",
+      });
+      // 10 already unsubmitted + 10 more > 15.
+      const res = await createUpload(
+        token,
+        {
+          fileName: "more.pdf",
+          contentType: "application/pdf",
+          sizeBytes: 10,
+          checksumCrc32c: "AAAAAA==",
+        },
+        413,
+      );
+      expect(res.body.error.code).toBe("quota_exceeded");
+    } finally {
+      config.MAX_USER_UNSUBMITTED_BYTES = original;
+      await db.stagedFile.deleteMany({ where: { ownerUserId: owner } });
+    }
   });
 
   it("GET status returns only owned files in request order", async () => {
