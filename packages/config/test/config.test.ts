@@ -50,4 +50,33 @@ describe("databaseUrlFromEnv", () => {
   it("throws naming the missing parts", () => {
     expect(() => databaseUrlFromEnv({})).toThrow(/DB_HOST/);
   });
+
+  it("appends ?sslmode=<DB_SSL> to the built URL", () => {
+    expect(
+      databaseUrlFromEnv({
+        DB_HOST: "rds.example.com",
+        DB_NAME: "auth",
+        DB_USERNAME: "auth_app",
+        DB_PASSWORD: "pw",
+        DB_SSL: "no-verify",
+      }),
+    ).toBe(
+      "postgresql://auth_app:pw@rds.example.com:5432/auth?sslmode=no-verify",
+    );
+  });
+
+  it("appends &sslmode=<DB_SSL> to a DATABASE_URL that has a query", () => {
+    expect(
+      databaseUrlFromEnv({
+        DATABASE_URL: "postgresql://u:p@h:5432/d?connection_limit=4",
+        DB_SSL: "no-verify",
+      }),
+    ).toBe("postgresql://u:p@h:5432/d?connection_limit=4&sslmode=no-verify");
+  });
+
+  it("leaves the URL unchanged when DB_SSL is unset", () => {
+    expect(
+      databaseUrlFromEnv({ DATABASE_URL: "postgresql://u:p@h:5432/d" }),
+    ).toBe("postgresql://u:p@h:5432/d");
+  });
 });

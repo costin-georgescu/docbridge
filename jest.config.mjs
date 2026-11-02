@@ -53,6 +53,16 @@ export default {
       transform: { "^.+\\.tsx?$": tsTransform },
     },
     {
+      displayName: "scripts",
+      rootDir: ".",
+      testEnvironment: "node",
+      testMatch: ["**/scripts/**/*.test.ts"],
+      transform: { "^.+\\.tsx?$": tsTransform },
+      moduleNameMapper: {
+        "^@docbridge/config$": "<rootDir>/packages/config/src/index.ts",
+      },
+    },
+    {
       displayName: "api",
       rootDir: "apps/api",
       testEnvironment: "node",

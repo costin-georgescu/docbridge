@@ -1,3 +1,5 @@
+import { withDbSsl } from "@docbridge/config";
+
 // Resolves a Postgres URL for scripts. Locally the <P>_DATABASE_URL vars in
 // .env win; on AWS (one-off ECS tasks) Secrets Manager can't template a full
 // URL, so the task injects <P>_DB_HOST/_DB_NAME plus <P>_DB_USERNAME/
@@ -5,7 +7,7 @@
 // use via @docbridge/config's databaseUrlFromEnv, but prefixed per database.
 export function dbUrl(prefix: string): string {
   const direct = process.env[`${prefix}_DATABASE_URL`];
-  if (direct) return direct;
+  if (direct) return withDbSsl(direct);
   const host = process.env[`${prefix}_DB_HOST`];
   const name = process.env[`${prefix}_DB_NAME`];
   const user = process.env[`${prefix}_DB_USERNAME`];
@@ -16,5 +18,7 @@ export function dbUrl(prefix: string): string {
         `${prefix}_DB_USERNAME/${prefix}_DB_PASSWORD must be set`,
     );
   }
-  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:5432/${name}`;
+  return withDbSsl(
+    `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:5432/${name}`,
+  );
 }

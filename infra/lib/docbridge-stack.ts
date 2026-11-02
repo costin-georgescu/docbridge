@@ -51,6 +51,11 @@ const Parameters = {
   multipartAbortDays: 7,
 } as const;
 
+// RDS enforces rds.force_ssl; the RDS CA is not in Node's trust store and
+// pg-connection-string treats sslmode=require as verify-full, so use
+// no-verify (encrypted, no CA check) everywhere a pg URL is built.
+const DB_SSL = "no-verify";
+
 const SERVICE_PORTS: Record<string, number> = {
   api: 3000,
   auth: 3001,
@@ -315,6 +320,9 @@ export class DocBridgeStack extends cdk.Stack {
 
     // ---------- Services ----------
     const servicesSg = new ec2.SecurityGroup(this, "ServicesSg", { vpc });
+    // Services and the one-off migrate/seed/bootstrap tasks all run with
+    // this security group (run-task network overrides).
+    db.connections.allowDefaultPortFrom(servicesSg);
     const serviceNames = [
       "api",
       "auth",
@@ -413,6 +421,7 @@ export class DocBridgeStack extends cdk.Stack {
         UPLOAD_EVENTS_QUEUE_URL: uploadEventsQueue.queueUrl,
         WEB_ORIGIN: webOrigin,
         DB_HOST: db.instanceEndpoint.hostname,
+        DB_SSL,
         DB_NAME: {
           api: "docbridge",
           dispatcher: "docbridge",
@@ -686,6 +695,7 @@ export class DocBridgeStack extends cdk.Stack {
         environment: {
           NODE_ENV: "production",
           DB_HOST: db.instanceEndpoint.hostname,
+          DB_SSL,
           DB_NAME: dbName,
         },
         secrets: {
@@ -749,6 +759,7 @@ export class DocBridgeStack extends cdk.Stack {
         STAGING_BUCKET: stagingBucket.bucketName,
         PLATFORM_BUCKET: platformBucket.bucketName,
         WEB_ORIGIN: webOrigin,
+        DB_SSL,
         AUTH_DB_HOST: db.instanceEndpoint.hostname,
         AUTH_DB_NAME: "auth",
         DOCBRIDGE_DB_HOST: db.instanceEndpoint.hostname,
@@ -794,6 +805,88 @@ export class DocBridgeStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "SeedTaskDef", {
       value: seedTaskDef.taskDefinitionArn,
+    });
+
+    // ---------- Database bootstrap task ----------
+    // Creates the app roles + databases before the first migrate run
+    // (locally docker/postgres/init.sql does this). One-off `run-task`.
+    const bootstrapRole = new iam.Role(this, "BootstrapRole", {
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+    db.secret!.grantRead(bootstrapRole);
+    for (const secret of Object.values(dbSecrets)) {
+      secret.grantRead(bootstrapRole);
+    }
+    secretsKey.grantDecrypt(bootstrapRole);
+    db.secret!.grantRead(executionRole);
+    const bootstrapTaskDef = new ecs.FargateTaskDefinition(
+      this,
+      "BootstrapTask",
+      {
+        cpu: 256,
+        memoryLimitMiB: 512,
+        taskRole: bootstrapRole,
+        executionRole,
+      },
+    );
+    bootstrapTaskDef.addContainer("db-bootstrap", {
+      containerName: "db-bootstrap",
+      image: ecs.ContainerImage.fromEcrRepository(repos.api, props.imageTag),
+      command: ["node", "--import", "tsx", "scripts/db-bootstrap.ts"],
+      environment: {
+        NODE_ENV: "production",
+        DB_SSL,
+        MASTER_DB_HOST: db.instanceEndpoint.hostname,
+        MASTER_DB_NAME: "postgres",
+        AUTH_DB_NAME: "auth",
+        DOCBRIDGE_DB_NAME: "docbridge",
+        PLATFORM_DB_NAME: "platform",
+      },
+      secrets: {
+        MASTER_DB_USERNAME: ecs.Secret.fromSecretsManager(
+          db.secret!,
+          "username",
+        ),
+        MASTER_DB_PASSWORD: ecs.Secret.fromSecretsManager(
+          db.secret!,
+          "password",
+        ),
+        AUTH_DB_USERNAME: ecs.Secret.fromSecretsManager(
+          dbSecrets.auth,
+          "username",
+        ),
+        AUTH_DB_PASSWORD: ecs.Secret.fromSecretsManager(
+          dbSecrets.auth,
+          "password",
+        ),
+        DOCBRIDGE_DB_USERNAME: ecs.Secret.fromSecretsManager(
+          dbSecrets.docbridge,
+          "username",
+        ),
+        DOCBRIDGE_DB_PASSWORD: ecs.Secret.fromSecretsManager(
+          dbSecrets.docbridge,
+          "password",
+        ),
+        PLATFORM_DB_USERNAME: ecs.Secret.fromSecretsManager(
+          dbSecrets.platform,
+          "username",
+        ),
+        PLATFORM_DB_PASSWORD: ecs.Secret.fromSecretsManager(
+          dbSecrets.platform,
+          "password",
+        ),
+      },
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: "db-bootstrap",
+        logGroup: new logs.LogGroup(this, "LogGroup-db-bootstrap", {
+          logGroupName: `/docbridge/${envName}/db-bootstrap`,
+          retention: logs.RetentionDays.ONE_MONTH,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      }),
+    });
+    new cdk.CfnOutput(this, "BootstrapTaskDef", {
+      value: bootstrapTaskDef.taskDefinitionArn,
     });
 
     // ---------- Alarms ----------

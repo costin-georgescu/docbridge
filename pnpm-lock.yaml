@@ -175,6 +175,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: 3.1155.0
         version: 3.1155.0
+      '@docbridge/config':
+        specifier: workspace:*
+        version: link:packages/config
       '@docbridge/db-auth':
         specifier: workspace:*
         version: link:packages/db-auth

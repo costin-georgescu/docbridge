@@ -346,6 +346,18 @@ describe("RDS", () => {
       StorageEncrypted: true,
     });
   });
+
+  it("allows connections from the services security group only", () => {
+    const ingress = Object.values(
+      template.findResources("AWS::EC2::SecurityGroupIngress"),
+    ).filter((r) =>
+      JSON.stringify(r.Properties?.GroupId).includes("PostgresSecurityGroup"),
+    );
+    expect(ingress).toHaveLength(1);
+    const rule = JSON.stringify(ingress[0].Properties);
+    expect(rule).toContain("ServicesSg");
+    expect(rule).not.toContain("0.0.0.0/0");
+  });
 });
 
 describe("ECS services", () => {
@@ -356,5 +368,64 @@ describe("ECS services", () => {
         DeploymentCircuitBreaker: { Enable: true, Rollback: true },
       },
     });
+  });
+});
+
+describe("database bootstrap task", () => {
+  const container = Match.objectLike({
+    Name: "db-bootstrap",
+    Command: ["node", "--import", "tsx", "scripts/db-bootstrap.ts"],
+  });
+
+  it("runs scripts/db-bootstrap.ts via tsx on the api image", () => {
+    template.hasResourceProperties("AWS::ECS::TaskDefinition", {
+      ContainerDefinitions: Match.arrayWith([container]),
+    });
+  });
+
+  it("wires the master and app database secrets", () => {
+    template.hasResourceProperties("AWS::ECS::TaskDefinition", {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Name: "db-bootstrap",
+          Secrets: Match.arrayWith([
+            Match.objectLike({ Name: "MASTER_DB_USERNAME" }),
+            Match.objectLike({ Name: "MASTER_DB_PASSWORD" }),
+            Match.objectLike({ Name: "AUTH_DB_USERNAME" }),
+            Match.objectLike({ Name: "AUTH_DB_PASSWORD" }),
+            Match.objectLike({ Name: "DOCBRIDGE_DB_USERNAME" }),
+            Match.objectLike({ Name: "DOCBRIDGE_DB_PASSWORD" }),
+            Match.objectLike({ Name: "PLATFORM_DB_USERNAME" }),
+            Match.objectLike({ Name: "PLATFORM_DB_PASSWORD" }),
+          ]),
+          Environment: Match.arrayWith([
+            Match.objectLike({ Name: "DB_SSL", Value: "no-verify" }),
+          ]),
+        }),
+      ]),
+    });
+  });
+
+  it("exports the task definition arn", () => {
+    template.hasOutput("BootstrapTaskDef", { Value: Match.anyValue() });
+  });
+});
+
+describe("DB SSL", () => {
+  it("sets DB_SSL=no-verify on every DB-connecting container", () => {
+    const defs = Object.values(
+      template.findResources("AWS::ECS::TaskDefinition"),
+    );
+    // 5 services + 3 migrate + seed + bootstrap
+    expect(defs).toHaveLength(10);
+    for (const def of defs) {
+      for (const c of def.Properties.ContainerDefinitions) {
+        expect(c.Environment ?? []).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ Name: "DB_SSL", Value: "no-verify" }),
+          ]),
+        );
+      }
+    }
   });
 });
