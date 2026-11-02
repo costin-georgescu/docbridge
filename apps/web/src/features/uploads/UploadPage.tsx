@@ -18,7 +18,7 @@ export function UploadPage() {
         </h1>
       </header>
       <FileDropzone
-        compact={items.length > 0}
+        hasItems={items.length > 0}
         onFiles={(files) => uploadManager.addFiles(files)}
       />
       {tree.isPending ? (
