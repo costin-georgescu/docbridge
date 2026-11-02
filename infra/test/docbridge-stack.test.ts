@@ -33,6 +33,7 @@ function synth({
     crossRegionReferences: true,
     envName: "test",
     domainName: cfg.domainName,
+    hostedZoneId: cfg.hostedZoneId,
   });
   const stack = new DocBridgeStack(app, "DocBridge-test", {
     env,
@@ -47,10 +48,11 @@ function synth({
   return {
     main: Template.fromStack(stack),
     repos: Template.fromStack(repos),
+    cert: Template.fromStack(cert),
   };
 }
 
-const { main: template, repos: reposTemplate } = synth();
+const { main: template, repos: reposTemplate, cert: certTemplate } = synth();
 
 describe("buckets", () => {
   it("all buckets block public access and use SSE-KMS or are private", () => {
@@ -429,6 +431,17 @@ describe("database bootstrap task", () => {
 
   it("exports the task definition arn", () => {
     template.hasOutput("BootstrapTaskDef", { Value: Match.anyValue() });
+  });
+});
+
+describe("CloudFront certificate", () => {
+  it("validates via DNS against the hosted zone", () => {
+    certTemplate.hasResourceProperties("AWS::CertificateManager::Certificate", {
+      DomainName: `app.${config.domainName}`,
+      DomainValidationOptions: Match.arrayWith([
+        Match.objectLike({ HostedZoneId: config.hostedZoneId }),
+      ]),
+    });
   });
 });
 

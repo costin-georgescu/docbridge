@@ -9,6 +9,7 @@ DocBridge turns a repetitive clinical-trial workflow into one action: pick files
 - [Technical design](docs/tdd.md) — stack, data model, API contracts, per-step implementation with estimates, failure modes, launch plan.
 - [Decision records](docs/adr/)
 - [Diagrams](docs/diagrams/) — architecture + per-flow sequence diagrams (Eraser DSL) + [interactive view on Eraser](https://app.eraser.io/workspace/Vk4jEqnF0LIV0BCPlIG3?origin=share).
+- [Deploying to AWS](infra/README.md) — ordered runbook: account bootstrap, first deploy, verification, teardown.
 
 ## Tech stack
 

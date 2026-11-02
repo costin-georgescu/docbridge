@@ -27,6 +27,7 @@ for (const [envName, env] of Object.entries(environments)) {
     crossRegionReferences: true,
     envName,
     domainName: env.domainName,
+    hostedZoneId: env.hostedZoneId,
   });
   new DocBridgeStack(app, `DocBridge-${envName}`, {
     ...props,

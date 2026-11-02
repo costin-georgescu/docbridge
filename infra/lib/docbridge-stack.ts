@@ -71,12 +71,23 @@ export class CertStack extends cdk.Stack {
   constructor(
     scope: Construct,
     id: string,
-    props: cdk.StackProps & { envName: string; domainName: string },
+    props: cdk.StackProps & {
+      envName: string;
+      domainName: string;
+      hostedZoneId: string;
+    },
   ) {
     super(scope, id, props);
+    // Route 53 is global: the zone can be referenced from us-east-1 and the
+    // validation records are created automatically (manual CNAMEs would
+    // hang the deploy).
+    const zone = route53.HostedZone.fromHostedZoneAttributes(this, "Zone", {
+      hostedZoneId: props.hostedZoneId,
+      zoneName: props.domainName,
+    });
     this.certificate = new acm.Certificate(this, "WebCertificate", {
       domainName: `app.${props.domainName}`,
-      validation: acm.CertificateValidation.fromDns(),
+      validation: acm.CertificateValidation.fromDns(zone),
     });
   }
 }
