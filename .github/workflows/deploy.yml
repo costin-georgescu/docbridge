@@ -21,6 +21,9 @@ on:
 
 env:
   AWS_REGION: eu-central-1
+  # Real environment values (domain/zone/account) come from this repo
+  # variable; empty falls back to the cdk.json placeholders (CI synth only).
+  DOCBRIDGE_ENVIRONMENTS: ${{ vars.DOCBRIDGE_ENVIRONMENTS }}
 
 concurrency:
   group: deploy-${{ inputs.environment || (github.ref_name == 'master' && 'production' || 'staging') }}
@@ -60,11 +63,15 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Check environment configuration
+        run: scripts/aws/check-env.sh "${{ steps.env_name.outputs.name }}"
+
       - name: Deploy ECR repositories
         working-directory: infra
         run: |
           pnpm exec cdk deploy "DocBridgeRepos-${{ steps.env_name.outputs.name }}" \
-            --require-approval never
+            --require-approval never \
+            -c environment=${{ steps.env_name.outputs.name }}
 
   images:
     needs: repos
@@ -154,10 +161,13 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check environment configuration
+        run: scripts/aws/check-env.sh "${{ steps.env_name.outputs.name }}"
+
       - name: Deploy cert + main stacks
         working-directory: infra
         run: |
-          ARGS=(--require-approval never -c "imageTag=${{ github.sha }}" --outputs-file outputs.json)
+          ARGS=(--require-approval never -c "imageTag=${{ github.sha }}" -c "environment=${{ steps.env_name.outputs.name }}" --outputs-file outputs.json)
           if [ "${{ steps.first_deploy.outputs.enabled }}" = "true" ]; then
             ARGS+=(-c firstDeploy=true)
           fi
@@ -190,6 +200,7 @@ jobs:
           pnpm exec cdk deploy "DocBridge-${{ steps.env_name.outputs.name }}" \
             --require-approval never \
             -c imageTag=${{ github.sha }} \
+            -c environment=${{ steps.env_name.outputs.name }} \
             --outputs-file outputs.json
 
       - name: Roll out services
@@ -226,7 +237,12 @@ jobs:
         id: api_base
         working-directory: infra
         run: |
-          DOMAIN=$(jq -r '.context.environments["${{ steps.env_name.outputs.name }}"].domainName' cdk.json)
+          E="${{ steps.env_name.outputs.name }}"
+          if [ -n "$DOCBRIDGE_ENVIRONMENTS" ]; then
+            DOMAIN=$(printf '%s' "$DOCBRIDGE_ENVIRONMENTS" | jq -r --arg e "$E" '.[$e].domainName')
+          else
+            DOMAIN=$(jq -r --arg e "$E" '.context.environments[$e].domainName' cdk.json)
+          fi
           echo "api_base=https://api.$DOMAIN" >> "$GITHUB_OUTPUT"
       - name: Publish web bundle
         env:

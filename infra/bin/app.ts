@@ -1,18 +1,16 @@
 import * as cdk from "aws-cdk-lib";
-import {
-  DocBridgeStack,
-  CertStack,
-  ReposStack,
-  EnvironmentConfig,
-} from "../lib/docbridge-stack";
+import { DocBridgeStack, CertStack, ReposStack } from "../lib/docbridge-stack";
+import { resolveEnvironments } from "../lib/environments";
 
 const app = new cdk.App();
-// The `environments` context in cdk.json holds PLACEHOLDER values
-// (domain, hosted zone id, account) filled in when real accounts exist.
-const environments = app.node.tryGetContext("environments") as Record<
-  string,
-  EnvironmentConfig
->;
+// cdk.json `environments` holds PLACEHOLDER values for offline synth;
+// DOCBRIDGE_ENVIRONMENTS (JSON) replaces them on real deploys, and
+// `-c environment=<name>` limits work to one environment.
+const environments = resolveEnvironments({
+  context: app.node.tryGetContext("environments"),
+  env: process.env,
+  selected: app.node.tryGetContext("environment"),
+});
 const imageTag = (app.node.tryGetContext("imageTag") as string) ?? "latest";
 // -c firstDeploy=true: services come up at desiredCount 0 so the DB
 // bootstrap/migrations/JWT key can run first; redeploy without the flag
