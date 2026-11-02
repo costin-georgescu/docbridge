@@ -6,7 +6,7 @@
   "types": "lib/docbridge-stack.ts",
   "scripts": {
     "synth": "cdk synth --quiet",
-    "test": "jest"
+    "test": "cd .. && NODE_OPTIONS=--experimental-vm-modules npx jest --selectProjects infra"
   },
   "dependencies": {
     "aws-cdk-lib": "2.274.0",
