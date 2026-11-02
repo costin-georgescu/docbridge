@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  GitHub OIDC provider + deploy role for the docbridge repository's deploy
+  workflow. Deploy once per account:
+    aws cloudformation deploy --template-file github-oidc-role.yaml \
+      --stack-name docbridge-github-oidc --capabilities CAPABILITY_NAMED_IAM \
+      --parameter-overrides GitHubOrg=<org> GitHubRepo=<repo>
+  Then set the printed role ARN as the repo variable AWS_DEPLOY_ROLE_ARN.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHub organisation or user that owns the repository.
+  GitHubRepo:
+    Type: String
+    Description: Repository name (e.g. docbridge).
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: >-
+      ARN of an existing token.actions.githubusercontent.com OIDC provider in
+      this account. Leave empty to create one.
+  RoleName:
+    Type: String
+    Default: docbridge-github-deploy
+    Description: Name of the deploy role to create.
+
+Conditions:
+  CreateProvider: !Equals [!Ref ExistingOidcProviderArn, ""]
+
+Resources:
+  GithubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [ffffffffffffffffffffffffffffffffffffffff]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateProvider
+                - !Ref GithubOidcProvider
+                - !Ref ExistingOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/dev
+                  - !Sub repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/master
+                  - !Sub repo:${GitHubOrg}/${GitHubRepo}:environment:*
+      Policies:
+        - PolicyName: cdk-deploy
+          PolicyDocument:
+            Statement:
+              # cdk deploy assumes the bootstrap roles (cdk-<qualifier>-*-role).
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/cdk-*
+              # Reading stack outputs after deploy.
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                Resource: !Sub arn:aws:cloudformation:*:${AWS::AccountId}:stack/DocBridge*
+        - PolicyName: ecr
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !Sub arn:aws:ecr:*:${AWS::AccountId}:repository/docbridge/*
+        - PolicyName: ecs-tasks
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                  - ecs:DescribeTasks
+                  - ecs:DescribeServices
+                  - ecs:UpdateService
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/DocBridge-*
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+        - PolicyName: secrets
+          PolicyDocument:
+            Statement:
+              # pnpm aws:jwt-key writes the signing key on first deploy.
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:PutSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Sub arn:aws:secretsmanager:*:${AWS::AccountId}:secret:docbridge/*
+        - PolicyName: web-publish
+          PolicyDocument:
+            Statement:
+              # WebBucket is docbridge-web-<env>-<account> in the stack.
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub arn:aws:s3:::docbridge-web-*-${AWS::AccountId}
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub arn:aws:s3:::docbridge-web-*-${AWS::AccountId}/*
+              - Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/*
+        - PolicyName: task-logs
+          PolicyDocument:
+            Statement:
+              # run-task.sh tails /docbridge/<env>/<task> on failure.
+              - Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                  - logs:DescribeLogStreams
+                  - logs:StartLiveTail
+                Resource: !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/docbridge/*
+
+Outputs:
+  DeployRoleArn:
+    Description: Set as the AWS_DEPLOY_ROLE_ARN repository variable.
+    Value: !GetAtt DeployRole.Arn

@@ -81,11 +81,40 @@ export class CertStack extends cdk.Stack {
   }
 }
 
+const APP_IMAGES = ["api", "auth", "platform", "dispatcher", "worker"] as const;
+export type AppImage = (typeof APP_IMAGES)[number];
+
+/** ECR repositories; deployed before the main stack so images can be pushed
+ * to repos that already exist (chicken-and-egg on first deploy). */
+export class ReposStack extends cdk.Stack {
+  public readonly repos: Record<AppImage, ecr.Repository>;
+
+  constructor(scope: Construct, id: string, props: cdk.StackProps) {
+    super(scope, id, props);
+    this.repos = Object.fromEntries(
+      APP_IMAGES.map((name) => [
+        name,
+        new ecr.Repository(this, `Repo-${name}`, {
+          repositoryName: `docbridge/${name}`,
+          imageScanOnPush: true,
+          lifecycleRules: [{ maxImageCount: 20 }],
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+          emptyOnDelete: true,
+        }),
+      ]),
+    ) as Record<AppImage, ecr.Repository>;
+  }
+}
+
 export interface DocBridgeStackProps extends cdk.StackProps {
   envName: string;
   config: EnvironmentConfig;
   imageTag: string;
   webCertificateArn: string;
+  repos: Record<AppImage, ecr.IRepository>;
+  // False on the very first deploy (-c firstDeploy=true): services get
+  // desiredCount 0 until the DB bootstrap + migrations + JWT key have run.
+  servicesEnabled: boolean;
 }
 
 export class DocBridgeStack extends cdk.Stack {
@@ -265,18 +294,9 @@ export class DocBridgeStack extends cdk.Stack {
     });
 
     // ---------- ECR ----------
-    const repos = Object.fromEntries(
-      ["api", "auth", "platform", "dispatcher", "worker"].map((name) => [
-        name,
-        new ecr.Repository(this, `Repo-${name}`, {
-          repositoryName: `docbridge/${name}`,
-          imageScanOnPush: true,
-          lifecycleRules: [{ maxImageCount: 20 }],
-          removalPolicy: cdk.RemovalPolicy.DESTROY,
-          emptyOnDelete: true,
-        }),
-      ]),
-    );
+    // Repositories live in DocBridgeRepos-<env> (deployed first); the main
+    // stack only references them for task-definition images.
+    const repos = props.repos;
 
     // ---------- ECS cluster + Cloud Map ----------
     const cluster = new ecs.Cluster(this, "Cluster", { vpc });
@@ -482,7 +502,7 @@ export class DocBridgeStack extends cdk.Stack {
       const service = new ecs.FargateService(this, `Service-${name}`, {
         cluster,
         taskDefinition: taskDef,
-        desiredCount: size.count,
+        desiredCount: props.servicesEnabled ? size.count : 0,
         securityGroups: [servicesSg],
         vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
         cloudMapOptions: { name },
@@ -506,24 +526,29 @@ export class DocBridgeStack extends cdk.Stack {
     }
 
     // api scales on CPU (TDD 7.x default); worker on queue backlog per task.
-    fargateServices.api
-      .autoScaleTaskCount({ minCapacity: 2, maxCapacity: 10 })
-      .scaleOnCpuUtilization("ApiCpu", { targetUtilizationPercent: 60 });
+    // No scaling on the first deploy (desiredCount 0) — flipping servicesEnabled
+    // afterwards re-adds these resources cleanly.
+    if (props.servicesEnabled) {
+      fargateServices.api
+        .autoScaleTaskCount({ minCapacity: 2, maxCapacity: 10 })
+        .scaleOnCpuUtilization("ApiCpu", { targetUtilizationPercent: 60 });
 
-    const workerScaling = fargateServices.worker.autoScaleTaskCount({
-      minCapacity: Parameters.services.worker.count,
-      maxCapacity: Parameters.workerMaxCount,
-    });
-    // Target tracking does not support metric math in this CDK version,
-    // so the target is raw ApproximateNumberOfMessagesVisible
-    // (workerMaxCount * backlog-per-task) rather than backlog per task.
-    workerScaling.scaleToTrackCustomMetric("WorkerBacklog", {
-      metric: tasksQueue.metricApproximateNumberOfMessagesVisible({
-        statistic: "Average",
-        period: cdk.Duration.minutes(1),
-      }),
-      targetValue: Parameters.workerMaxCount * Parameters.workerBacklogPerTask,
-    });
+      const workerScaling = fargateServices.worker.autoScaleTaskCount({
+        minCapacity: Parameters.services.worker.count,
+        maxCapacity: Parameters.workerMaxCount,
+      });
+      // Target tracking does not support metric math in this CDK version,
+      // so the target is raw ApproximateNumberOfMessagesVisible
+      // (workerMaxCount * backlog-per-task) rather than backlog per task.
+      workerScaling.scaleToTrackCustomMetric("WorkerBacklog", {
+        metric: tasksQueue.metricApproximateNumberOfMessagesVisible({
+          statistic: "Average",
+          period: cdk.Duration.minutes(1),
+        }),
+        targetValue:
+          Parameters.workerMaxCount * Parameters.workerBacklogPerTask,
+      });
+    }
 
     // ---------- ALB targets + rules ----------
     const httpServices = ["api", "auth", "platform"] as const;
@@ -959,6 +984,11 @@ export class DocBridgeStack extends cdk.Stack {
     new cdk.CfnOutput(this, "WebBucketName", { value: webBucket.bucketName });
     new cdk.CfnOutput(this, "DistributionId", {
       value: distribution.distributionId,
+    });
+    new cdk.CfnOutput(this, "ServiceNames", {
+      value: Object.values(fargateServices)
+        .map((s) => s.serviceName)
+        .join(","),
     });
     new cdk.CfnOutput(this, "ServiceSecurityGroup", {
       value: servicesSg.securityGroupId,

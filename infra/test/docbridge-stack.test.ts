@@ -4,6 +4,7 @@ import { Template, Match } from "aws-cdk-lib/assertions";
 import {
   DocBridgeStack,
   CertStack,
+  ReposStack,
   type EnvironmentConfig,
 } from "../lib/docbridge-stack";
 
@@ -14,9 +15,19 @@ const config: EnvironmentConfig = {
   region: "eu-central-1",
 };
 
-function synth(overrides: Partial<typeof config> = {}) {
+interface SynthOptions {
+  config?: Partial<typeof config>;
+  servicesEnabled?: boolean;
+}
+
+function synth({
+  config: overrides = {},
+  servicesEnabled = true,
+}: SynthOptions = {}) {
   const cfg = { ...config, ...overrides };
   const app = new cdk.App();
+  const env = { account: cfg.account, region: cfg.region };
+  const repos = new ReposStack(app, "DocBridgeRepos-test", { env });
   const cert = new CertStack(app, "DocBridgeCert-test", {
     env: { account: cfg.account, region: "us-east-1" },
     crossRegionReferences: true,
@@ -24,17 +35,22 @@ function synth(overrides: Partial<typeof config> = {}) {
     domainName: cfg.domainName,
   });
   const stack = new DocBridgeStack(app, "DocBridge-test", {
-    env: { account: cfg.account, region: cfg.region },
+    env,
     crossRegionReferences: true,
     envName: "test",
     config: cfg,
     imageTag: "latest",
     webCertificateArn: cert.certificate.certificateArn,
+    repos: repos.repos,
+    servicesEnabled,
   });
-  return Template.fromStack(stack);
+  return {
+    main: Template.fromStack(stack),
+    repos: Template.fromStack(repos),
+  };
 }
 
-const template = synth();
+const { main: template, repos: reposTemplate } = synth();
 
 describe("buckets", () => {
   it("all buckets block public access and use SSE-KMS or are private", () => {
@@ -416,9 +432,57 @@ describe("database bootstrap task", () => {
   });
 });
 
+describe("ECR repositories", () => {
+  it("live in the repos stack with the docbridge/<app> names", () => {
+    reposTemplate.resourceCountIs("AWS::ECR::Repository", 5);
+    for (const app of ["api", "auth", "platform", "dispatcher", "worker"]) {
+      reposTemplate.hasResourceProperties("AWS::ECR::Repository", {
+        RepositoryName: `docbridge/${app}`,
+        ImageScanningConfiguration: { ScanOnPush: true },
+      });
+    }
+    template.resourceCountIs("AWS::ECR::Repository", 0);
+  });
+
+  it("the main stack references them for task images", () => {
+    const defs = Object.values(
+      template.findResources("AWS::ECS::TaskDefinition"),
+    );
+    const images = defs.flatMap((d) =>
+      d.Properties.ContainerDefinitions.map((c: { Image: unknown }) =>
+        JSON.stringify(c.Image),
+      ),
+    );
+    expect(images.length).toBeGreaterThan(0);
+    for (const image of images) {
+      expect(image).toContain("DocBridgeRepos-test:ExportsOutput");
+    }
+  });
+});
+
+describe("firstDeploy flag", () => {
+  it("desiredCount 0 and no autoscaling when services are disabled", () => {
+    const t = synth({ servicesEnabled: false }).main;
+    t.allResourcesProperties("AWS::ECS::Service", {
+      DesiredCount: 0,
+    });
+    t.resourceCountIs("AWS::ApplicationAutoScaling::ScalableTarget", 0);
+    t.resourceCountIs("AWS::ApplicationAutoScaling::ScalingPolicy", 0);
+  });
+
+  it("normal counts and worker scaling when enabled", () => {
+    template.allResourcesProperties("AWS::ECS::Service", {
+      DesiredCount: 2,
+    });
+    template.resourceCountIs("AWS::ApplicationAutoScaling::ScalableTarget", 2);
+  });
+});
+
 describe("alarm email", () => {
   it("creates an SNS email subscription when alarmEmail is set", () => {
-    const t = synth({ alarmEmail: "oncall@docbridge.example.com" });
+    const t = synth({
+      config: { alarmEmail: "oncall@docbridge.example.com" },
+    }).main;
     t.resourceCountIs("AWS::SNS::Subscription", 1);
     t.hasResourceProperties("AWS::SNS::Subscription", {
       Protocol: "email",

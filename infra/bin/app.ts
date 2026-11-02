@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import {
   DocBridgeStack,
   CertStack,
+  ReposStack,
   EnvironmentConfig,
 } from "../lib/docbridge-stack";
 
@@ -13,9 +14,14 @@ const environments = app.node.tryGetContext("environments") as Record<
   EnvironmentConfig
 >;
 const imageTag = (app.node.tryGetContext("imageTag") as string) ?? "latest";
+// -c firstDeploy=true: services come up at desiredCount 0 so the DB
+// bootstrap/migrations/JWT key can run first; redeploy without the flag
+// afterwards to reach the normal counts.
+const firstDeploy = app.node.tryGetContext("firstDeploy") === "true";
 
 for (const [envName, env] of Object.entries(environments)) {
   const props = { env: { account: env.account, region: env.region } };
+  const repos = new ReposStack(app, `DocBridgeRepos-${envName}`, props);
   // CloudFront certificates must live in us-east-1: a separate stack
   // whose ARN is passed to the main stack via a cross-region reference.
   const cert = new CertStack(app, `DocBridgeCert-${envName}`, {
@@ -31,5 +37,7 @@ for (const [envName, env] of Object.entries(environments)) {
     config: env,
     imageTag,
     webCertificateArn: cert.certificate.certificateArn,
+    repos: repos.repos,
+    servicesEnabled: !firstDeploy,
   });
 }

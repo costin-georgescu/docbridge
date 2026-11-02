@@ -4,11 +4,16 @@ import {
   parseArgs,
   generateSigningKey,
   secretIsPopulated,
+  planForPopulated,
 } from "./gen-signing-key.impl";
 
 describe("parseArgs", () => {
   it("defaults to print mode with no flags", () => {
-    expect(parseArgs([])).toEqual({ force: false, dryRun: false });
+    expect(parseArgs([])).toEqual({
+      force: false,
+      dryRun: false,
+      skipIfPopulated: false,
+    });
   });
 
   it("parses --aws-secret, --region, --force, --dry-run", () => {
@@ -20,12 +25,14 @@ describe("parseArgs", () => {
         "eu-central-1",
         "--force",
         "--dry-run",
+        "--skip-if-populated",
       ]),
     ).toEqual({
       awsSecret: "docbridge/staging/auth/jwt-signing-key",
       region: "eu-central-1",
       force: true,
       dryRun: true,
+      skipIfPopulated: true,
     });
   });
 
@@ -58,6 +65,20 @@ describe("generateSigningKey", () => {
 
   it("generates unique kids", () => {
     expect(generateSigningKey().kid).not.toBe(generateSigningKey().kid);
+  });
+});
+
+describe("planForPopulated", () => {
+  it("skips with --skip-if-populated, refuses by default, writes with --force", () => {
+    expect(planForPopulated({ force: false, skipIfPopulated: true })).toBe(
+      "skip",
+    );
+    expect(planForPopulated({ force: false, skipIfPopulated: false })).toBe(
+      "refuse",
+    );
+    expect(planForPopulated({ force: true, skipIfPopulated: true })).toBe(
+      "write",
+    );
   });
 });
 

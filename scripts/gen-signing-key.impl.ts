@@ -12,10 +12,15 @@ export interface KeygenArgs {
   region?: string;
   force: boolean;
   dryRun: boolean;
+  skipIfPopulated: boolean;
 }
 
 export function parseArgs(argv: string[]): KeygenArgs {
-  const args: KeygenArgs = { force: false, dryRun: false };
+  const args: KeygenArgs = {
+    force: false,
+    dryRun: false,
+    skipIfPopulated: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--aws-secret") {
@@ -26,6 +31,8 @@ export function parseArgs(argv: string[]): KeygenArgs {
       if (!args.region) throw new Error("--region requires a value");
     } else if (arg === "--force") {
       args.force = true;
+    } else if (arg === "--skip-if-populated") {
+      args.skipIfPopulated = true;
     } else if (arg === "--dry-run") {
       args.dryRun = true;
     } else {
@@ -79,6 +86,14 @@ export function secretIsPopulated(result: AwsResult): boolean {
   );
 }
 
+// What to do when the secret already holds a value.
+export function planForPopulated(
+  args: Pick<KeygenArgs, "force" | "skipIfPopulated">,
+): "write" | "skip" | "refuse" {
+  if (args.force) return "write";
+  return args.skipIfPopulated ? "skip" : "refuse";
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -109,10 +124,17 @@ function main() {
       ...regionArgs,
     ]);
     if (secretIsPopulated(current)) {
-      console.error(
-        `${secret} already has a value; refusing to overwrite (use --force)`,
-      );
-      process.exit(1);
+      const plan = planForPopulated(args);
+      if (plan === "skip") {
+        console.log(`${secret} already populated; nothing to do`);
+        return;
+      }
+      if (plan === "refuse") {
+        console.error(
+          `${secret} already has a value; refusing to overwrite (use --force)`,
+        );
+        process.exit(1);
+      }
     }
   }
 

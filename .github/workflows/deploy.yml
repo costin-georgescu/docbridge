@@ -3,12 +3,115 @@ name: Deploy
 on:
   push:
     branches: [dev, master]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        type: choice
+        options: [staging, production]
+        default: staging
+      first_deploy:
+        description: First deploy (services start at desiredCount 0 until the DB is bootstrapped)
+        type: boolean
+        default: false
+      seed:
+        description: Run the seed task (staging only)
+        type: boolean
+        default: false
 
 env:
   AWS_REGION: eu-central-1
 
+concurrency:
+  group: deploy-${{ inputs.environment || (github.ref_name == 'master' && 'production' || 'staging') }}
+  cancel-in-progress: false
+
 jobs:
+  # Repos live in their own stack so they exist before the first push.
+  repos:
+    runs-on: ubuntu-latest
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve environment
+        id: env_name
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_name }}" = "master" ]; then
+            echo "name=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy ECR repositories
+        working-directory: infra
+        run: |
+          pnpm exec cdk deploy "DocBridgeRepos-${{ steps.env_name.outputs.name }}" \
+            --require-approval never
+
+  images:
+    needs: repos
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, auth, platform, dispatcher, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - uses: docker/setup-buildx-action@v3
+
+      # One shared cache scope for all five images: only the last layer
+      # (ENV APP) differs, so every build reuses the install/source layers.
+      - name: Build and push ${{ matrix.app }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/app.Dockerfile
+          build-args: APP=${{ matrix.app }}
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/docbridge/${{ matrix.app }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/docbridge/${{ matrix.app }}:latest
+          cache-from: type=gha,scope=docbridge-app
+          cache-to: type=gha,mode=max,scope=docbridge-app
+
   deploy:
+    needs: images
     runs-on: ubuntu-latest
     # No-ops until the AWS account/OIDC role is configured in repo vars.
     if: vars.AWS_DEPLOY_ROLE_ARN != ''
@@ -31,31 +134,57 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: aws-actions/amazon-ecr-login@v2
-        id: ecr
-
       - name: Resolve environment
         id: env_name
         run: |
-          if [ "${{ github.ref_name }}" = "master" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_name }}" = "master" ]; then
             echo "name=production" >> "$GITHUB_OUTPUT"
           else
             echo "name=staging" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push service images
-        env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
+      - name: First deploy flag
+        id: first_deploy
         run: |
-          for app in api auth platform dispatcher worker; do
-            docker build -f docker/app.Dockerfile \
-              --build-arg APP=$app \
-              -t $REGISTRY/docbridge/$app:${{ github.sha }} \
-              -t $REGISTRY/docbridge/$app:latest .
-            docker push $REGISTRY/docbridge/$app:${{ github.sha }}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.first_deploy }}" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy cert + main stacks
+        working-directory: infra
+        run: |
+          ARGS=(--require-approval never -c "imageTag=${{ github.sha }}" --outputs-file outputs.json)
+          if [ "${{ steps.first_deploy.outputs.enabled }}" = "true" ]; then
+            ARGS+=(-c firstDeploy=true)
+          fi
+          pnpm exec cdk deploy "DocBridgeCert-${{ steps.env_name.outputs.name }}" \
+            "DocBridge-${{ steps.env_name.outputs.name }}" "${ARGS[@]}"
+
+      # Idempotent: creates the databases/roles on a fresh RDS, no-ops after.
+      - name: Bootstrap databases and roles
+        run: scripts/aws/run-task.sh infra/outputs.json "DocBridge-${{ steps.env_name.outputs.name }}" BootstrapTaskDef
+
+      # TDD 7.1: migrations run as one-off ECS tasks BEFORE the service rollout.
+      - name: Run database migrations
+        run: |
+          for db in auth docbridge platform; do
+            scripts/aws/run-task.sh infra/outputs.json \
+              "DocBridge-${{ steps.env_name.outputs.name }}" "MigrateTaskDef-$db"
           done
 
-      - name: Deploy stack
+      # Generates the signing key only while the secret is empty; never
+      # rotates on subsequent deploys.
+      - name: Provision JWT signing key
+        run: |
+          pnpm aws:jwt-key "docbridge/${{ steps.env_name.outputs.name }}/auth/jwt-signing-key" \
+            --skip-if-populated --region ${{ env.AWS_REGION }}
+
+      - name: Enable services (first deploy second pass)
+        if: steps.first_deploy.outputs.enabled == 'true'
         working-directory: infra
         run: |
           pnpm exec cdk deploy "DocBridge-${{ steps.env_name.outputs.name }}" \
@@ -63,41 +192,36 @@ jobs:
             -c imageTag=${{ github.sha }} \
             --outputs-file outputs.json
 
-      # TDD 7.1: migrations run as one-off ECS tasks BEFORE the service rollout.
-      - name: Run database migrations
-        working-directory: infra
-        run: |
-          CLUSTER=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ClusterName' outputs.json)
-          SG=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ServiceSecurityGroup' outputs.json)
-          SUBNETS=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].PrivateSubnetIds' outputs.json)
-          NET="awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=DISABLED}"
-          for db in auth docbridge platform; do
-            TDEF=$(jq -r ".[\"DocBridge-${{ steps.env_name.outputs.name }}\"][\"MigrateTaskDef-$db\"]" outputs.json)
-            TASK=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE \
-              --task-definition "$TDEF" \
-              --network-configuration "$NET" \
-              --query 'tasks[0].taskArn' --output text)
-            aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
-            CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
-              --query 'tasks[0].containers[0].exitCode' --output text)
-            if [ "$CODE" != "0" ]; then
-              echo "migration $db failed (exit $CODE)" >&2
-              exit 1
-            fi
-          done
-
       - name: Roll out services
-        working-directory: infra
+        if: steps.first_deploy.outputs.enabled != 'true'
         run: |
-          CLUSTER=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ClusterName' outputs.json)
-          for svc in api auth platform dispatcher worker; do
+          CLUSTER=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ClusterName' infra/outputs.json)
+          SERVICES=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ServiceNames' infra/outputs.json)
+          IFS=',' read -ra NAMES <<< "$SERVICES"
+          for svc in "${NAMES[@]}"; do
             aws ecs update-service --cluster "$CLUSTER" --service "$svc" \
               --force-new-deployment >/dev/null
           done
 
+      - name: Wait for services to stabilise
+        run: |
+          CLUSTER=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ClusterName' infra/outputs.json)
+          SERVICES=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].ServiceNames' infra/outputs.json | tr ',' ' ')
+          # shellcheck disable=SC2086 # --services takes a space-separated list
+          timeout 600 aws ecs wait services-stable \
+            --cluster "$CLUSTER" --services $SERVICES
+
+      - name: Seed demo data (staging only)
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.seed &&
+          steps.env_name.outputs.name == 'staging'
+        run: scripts/aws/run-task.sh infra/outputs.json "DocBridge-${{ steps.env_name.outputs.name }}" SeedTaskDef
+
       # The SPA calls api.<domain> for /api, /auth and /tree; without this
       # the bundle defaults to same-origin app.<domain>, which CloudFront
-      # serves from S3 only.
+      # serves from S3 only. Flow E will move where the domain comes from;
+      # keep the lookup isolated in this single step.
       - name: Resolve api origin for the web build
         id: api_base
         working-directory: infra
