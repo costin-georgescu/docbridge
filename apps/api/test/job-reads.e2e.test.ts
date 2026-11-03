@@ -406,10 +406,10 @@ run("job reads e2e", () => {
     });
   });
 
-  describe("GET /api/jobs/:id/files/:fileId/download", () => {
+  describe("POST /api/jobs/:id/files/:fileId/download-url", () => {
     it("rejects requests without a token", async () => {
       const res = await api()
-        .get(`/api/jobs/${uuidv7()}/files/${uuidv7()}/download`)
+        .post(`/api/jobs/${uuidv7()}/files/${uuidv7()}/download-url`)
         .expect(401);
       expect(res.body.error.code).toBe("unauthorized");
     });
@@ -419,7 +419,7 @@ run("job reads e2e", () => {
       const token = await userToken(OWNER_C, [TEAM_1]);
       for (const jobId of [uuidv7(), "not-a-uuid", foreign.jobId]) {
         const res = await api()
-          .get(`/api/jobs/${jobId}/files/${uuidv7()}/download`)
+          .post(`/api/jobs/${jobId}/files/${uuidv7()}/download-url`)
           .set(bearer(token))
           .expect(403);
         expect(res.body.error.code).toBe("job_not_visible");
@@ -431,7 +431,7 @@ run("job reads e2e", () => {
       const b = await seedJob({ teams: [TEAM_1], tasks: [{}] });
       const token = await userToken(OWNER_D, [TEAM_1]);
       const res = await api()
-        .get(`/api/jobs/${a.jobId}/files/${b.fileIds[0]}/download`)
+        .post(`/api/jobs/${a.jobId}/files/${b.fileIds[0]}/download-url`)
         .set(bearer(token))
         .expect(404);
       expect(res.body.error.code).toBe("file_not_in_job");
@@ -445,7 +445,7 @@ run("job reads e2e", () => {
       });
       const token = await userToken(OWNER_C, [TEAM_1]);
       const res = await api()
-        .get(`/api/jobs/${job.jobId}/files/${job.fileIds[1]}/download`)
+        .post(`/api/jobs/${job.jobId}/files/${job.fileIds[1]}/download-url`)
         .set(bearer(token))
         .expect(404);
       expect(res.body.error.code).toBe("file_not_in_job");
@@ -464,7 +464,7 @@ run("job reads e2e", () => {
       });
       const token = await userToken(OWNER_C, [TEAM_1]);
       const res = await api()
-        .get(`/api/jobs/${job.jobId}/files/${job.fileIds[0]}/download`)
+        .post(`/api/jobs/${job.jobId}/files/${job.fileIds[0]}/download-url`)
         .set(bearer(token))
         .expect(410);
       expect(res.body.error.code).toBe("file_expired");
@@ -478,7 +478,7 @@ run("job reads e2e", () => {
       });
       const token = await userToken(OWNER_D, [TEAM_1]);
       const res = await api()
-        .get(`/api/jobs/${job.jobId}/files/${job.fileIds[0]}/download`)
+        .post(`/api/jobs/${job.jobId}/files/${job.fileIds[0]}/download-url`)
         .set(bearer(token))
         .expect(200);
       const u = new URL(res.body.url);

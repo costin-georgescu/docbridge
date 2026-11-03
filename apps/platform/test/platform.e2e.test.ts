@@ -168,9 +168,8 @@ run("platform e2e", () => {
     const missingId = randomUUID();
     const token = await serviceToken();
     const res = await request(app.getHttpServer())
-      .post("/folders/resolve")
+      .get(`/folders?ids=${ARCHIVE_A},${missingId}`)
       .set(bearer(token))
-      .send({ folderIds: [ARCHIVE_A, missingId] })
       .expect(200);
     expect(res.body.resolved).toEqual([
       {
@@ -185,17 +184,15 @@ run("platform e2e", () => {
   it("resolves folder paths for a user token", async () => {
     const token = await userToken({ teams: [TEAM_A] });
     const res = await request(app.getHttpServer())
-      .post("/folders/resolve")
+      .get(`/folders?ids=${REPORTS_A}`)
       .set(bearer(token))
-      .send({ folderIds: [REPORTS_A] })
       .expect(200);
     expect(res.body.resolved[0].path).toBe("E2E A / Binder / Reports");
   });
 
-  it("rejects /folders/resolve without a token", async () => {
+  it("rejects /folders?ids without a token", async () => {
     const res = await request(app.getHttpServer())
-      .post("/folders/resolve")
-      .send({ folderIds: [ARCHIVE_A] })
+      .get(`/folders?ids=${ARCHIVE_A}`)
       .expect(401);
     expect(res.body.error.code).toBe("unauthorized");
   });

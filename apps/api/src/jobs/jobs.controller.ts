@@ -76,7 +76,8 @@ export class JobsController {
     return this.jobs.getJob(claims, id);
   }
 
-  @Get(":id/files/:fileId/download")
+  @Post(":id/files/:fileId/download-url")
+  @HttpCode(200)
   @RequireUser()
   downloadFile(
     @Claims() claims: UserClaims,

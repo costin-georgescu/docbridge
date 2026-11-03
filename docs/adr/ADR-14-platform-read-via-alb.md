@@ -24,7 +24,7 @@ The API forwards browse requests to the platform with the caller's token and ret
 
 ### 2. Browser talks to the platform directly for browsing
 
-The load balancer routes `GET /tree` to the platform and everything else per domain. Only that one path is public: the delivery `PUT`, `/folders/resolve` and `/admin/*` are never routed, so the platform's write and admin surface stays private. The platform verifies the user's token itself — the same guard the workers' service token already requires.
+The load balancer routes `GET /tree` to the platform and everything else per domain. Only that one path is public: the delivery `PUT`, `GET /folders` and `/admin/*` are never routed, so the platform's write and admin surface stays private. The platform verifies the user's token itself — the same guard the workers' service token already requires.
 
 - \+ Mirrors an external product with its own public API.
 - \+ No pass-through endpoint: each service owns its domain end to end.
@@ -36,6 +36,6 @@ The load balancer routes `GET /tree` to the platform and everything else per dom
 
 **Option 2.**
 
-The pass-through added no logic: it forwarded a token and relayed a response. Since the platform already verifies tokens locally, routing `GET /tree` to it directly gives each service a clean public surface and removes a hop on the read path. The load balancer routes only that path — delivery, resolve and admin endpoints stay unrouted and reachable only on the internal service name. Submission still calls `POST /folders/resolve` server-to-server, so authorization at submission is unchanged.
+The pass-through added no logic: it forwarded a token and relayed a response. Since the platform already verifies tokens locally, routing `GET /tree` to it directly gives each service a clean public surface and removes a hop on the read path. The load balancer routes only that path — delivery, folder-lookup and admin endpoints stay unrouted and reachable only on the internal service name. Submission still calls `GET /folders?ids=` server-to-server, so authorization at submission is unchanged.
 
 **Ratified by:** Awaiting review

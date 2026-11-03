@@ -112,7 +112,7 @@ run("uploads e2e", () => {
       .expect(401);
     expect(res.body.error.code).toBe("unauthorized");
     await api().get("/api/uploads?ids=x").expect(401);
-    await api().post(`/api/uploads/${randomUUID()}/complete`).expect(401);
+    await api().put(`/api/uploads/${randomUUID()}`).expect(401);
   });
 
   it("rejects an invalid body with 422", async () => {
@@ -309,7 +309,7 @@ run("uploads e2e", () => {
     expect(badPart.status).toBeGreaterThanOrEqual(400);
 
     const complete = await api()
-      .post(`/api/uploads/${res.body.fileId}/complete`)
+      .put(`/api/uploads/${res.body.fileId}`)
       .set(bearer(token))
       .send({ parts: etags })
       .expect(200);
@@ -330,7 +330,7 @@ run("uploads e2e", () => {
     expect(head.ChecksumCRC32C).toBe(checksumCrc32c);
 
     const again = await api()
-      .post(`/api/uploads/${res.body.fileId}/complete`)
+      .put(`/api/uploads/${res.body.fileId}`)
       .set(bearer(token))
       .send({ parts: etags })
       .expect(409);
@@ -360,7 +360,7 @@ run("uploads e2e", () => {
     }
 
     const complete = await api()
-      .post(`/api/uploads/${res.body.fileId}/complete`)
+      .put(`/api/uploads/${res.body.fileId}`)
       .set(bearer(token))
       .send({ parts: etags })
       .expect(400);
@@ -388,7 +388,7 @@ run("uploads e2e", () => {
       partChecksumsCrc32c: Array(5).fill("AAAAAA=="),
     });
     const foreign = await api()
-      .post(`/api/uploads/${owned.body.fileId}/complete`)
+      .put(`/api/uploads/${owned.body.fileId}`)
       .set(bearer(tokenA))
       .send({ parts: [{ partNumber: 1, etag: "e" }] })
       .expect(404);
@@ -402,21 +402,21 @@ run("uploads e2e", () => {
       checksumCrc32c: "AAAAAA==",
     });
     const notMpu = await api()
-      .post(`/api/uploads/${single.body.fileId}/complete`)
+      .put(`/api/uploads/${single.body.fileId}`)
       .set(bearer(tokenA))
       .send({ parts: [{ partNumber: 1, etag: "e" }] })
       .expect(409);
     expect(notMpu.body.error.code).toBe("not_multipart");
 
     const missing = await api()
-      .post(`/api/uploads/${randomUUID()}/complete`)
+      .put(`/api/uploads/${randomUUID()}`)
       .set(bearer(tokenA))
       .send({ parts: [{ partNumber: 1, etag: "e" }] })
       .expect(404);
     expect(missing.body.error.code).toBe("upload_not_found");
 
     const dup = await api()
-      .post(`/api/uploads/${owned.body.fileId}/complete`)
+      .put(`/api/uploads/${owned.body.fileId}`)
       .set(bearer(tokenB))
       .send({
         parts: [

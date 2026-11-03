@@ -58,7 +58,7 @@ describe("api rate limits", () => {
     }
   });
 
-  it("GET /api/jobs/:id/files/:fileId/download returns 429 past RATE_LIMIT_DOWNLOADS_PER_MIN", () => {
+  it("POST /api/jobs/:id/files/:fileId/download-url returns 429 past RATE_LIMIT_DOWNLOADS_PER_MIN", () => {
     const undo = restore("RATE_LIMIT_DOWNLOADS_PER_MIN");
     try {
       config.RATE_LIMIT_DOWNLOADS_PER_MIN = 2;

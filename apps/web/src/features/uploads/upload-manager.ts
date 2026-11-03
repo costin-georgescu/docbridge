@@ -325,8 +325,8 @@ export function createUploadManager(deps: UploadManagerDeps): UploadManager {
     const parts = [...priv.etags.entries()]
       .map(([partNumber, etag]) => ({ partNumber, etag }))
       .sort((a, b) => a.partNumber - b.partNumber);
-    await deps.authFetch(`/api/uploads/${plan.fileId}/complete`, {
-      method: "POST",
+    await deps.authFetch(`/api/uploads/${plan.fileId}`, {
+      method: "PUT",
       body: JSON.stringify({ parts }),
     });
   };

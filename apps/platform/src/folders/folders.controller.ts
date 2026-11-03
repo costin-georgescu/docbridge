@@ -1,7 +1,7 @@
-import { Body, Controller, HttpCode, Inject, Post } from "@nestjs/common";
+import { Controller, Get, Inject, Query } from "@nestjs/common";
 import { RequireAuthenticated } from "@docbridge/auth-core";
 import {
-  ResolveFoldersRequest,
+  ResolveFoldersQuery,
   ResolveFoldersResponse,
 } from "@docbridge/contracts";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -14,13 +14,12 @@ export class FoldersController {
     private readonly folders: FoldersService,
   ) {}
 
-  @Post("resolve")
+  @Get()
   @RequireAuthenticated()
-  @HttpCode(200)
   resolve(
-    @Body(new ZodValidationPipe(ResolveFoldersRequest))
-    body: ResolveFoldersRequest,
+    @Query(new ZodValidationPipe(ResolveFoldersQuery))
+    query: ResolveFoldersQuery,
   ): Promise<ResolveFoldersResponse> {
-    return this.folders.resolve(body.folderIds);
+    return this.folders.resolve(query.ids);
   }
 }

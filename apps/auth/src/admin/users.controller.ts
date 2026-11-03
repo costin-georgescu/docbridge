@@ -5,6 +5,7 @@ import {
   HttpCode,
   Inject,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -14,6 +15,7 @@ import { z } from "zod";
 import {
   CreateUserRequest,
   ReplaceTeamsRequest,
+  UpdateUserRequest,
   UserListQuery,
   UserListResponse,
   UserResponse,
@@ -54,11 +56,14 @@ export class UsersController {
     return this.users.replaceTeams(id, body.teamIds);
   }
 
-  @Post(":id/disable")
+  @Patch(":id")
   @HttpCode(204)
-  async disable(
+  async update(
     @Param("id", new ZodValidationPipe(UserId)) id: string,
+    @Body(new ZodValidationPipe(UpdateUserRequest)) body: UpdateUserRequest,
   ): Promise<void> {
-    await this.users.disable(id);
+    if (body.status === "disabled") {
+      await this.users.disable(id);
+    }
   }
 }

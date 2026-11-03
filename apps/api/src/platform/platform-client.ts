@@ -24,13 +24,12 @@ export class PlatformClient {
   ): Promise<ResolveFoldersResponse> {
     let res: Response;
     try {
-      res = await this.fetchImpl(`${this.baseUrl}/folders/resolve`, {
-        method: "POST",
+      const ids = folderIds.map(encodeURIComponent).join(",");
+      res = await this.fetchImpl(`${this.baseUrl}/folders?ids=${ids}`, {
+        method: "GET",
         headers: {
           authorization: `Bearer ${bearerToken}`,
-          "content-type": "application/json",
         },
-        body: JSON.stringify({ folderIds }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch {

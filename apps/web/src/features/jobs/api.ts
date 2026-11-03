@@ -38,7 +38,8 @@ export function requestFileDownload(
   fileId: string,
 ): Promise<JobFileDownloadResponse> {
   return session.authFetch<JobFileDownloadResponse>(
-    `/api/jobs/${encodeURIComponent(jobId)}/files/${encodeURIComponent(fileId)}/download`,
+    `/api/jobs/${encodeURIComponent(jobId)}/files/${encodeURIComponent(fileId)}/download-url`,
+    { method: "POST" },
   );
 }
 

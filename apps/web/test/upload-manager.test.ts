@@ -87,7 +87,7 @@ function setup(
     put,
     posts: () =>
       authFetch.mock.calls
-        .filter((c) => c[1]?.method === "POST")
+        .filter((c) => c[1]?.method === "POST" || c[1]?.method === "PUT")
         .map((c) => ({
           path: c[0],
           body: JSON.parse(String(c[1]!.body)) as Record<string, unknown>,
@@ -196,7 +196,9 @@ describe("upload manager", () => {
     await waitFor(() => phases(manager).includes("processing"));
     expect(maxInflight).toBe(4);
     expect(posts()[0].body.partChecksumsCrc32c).toHaveLength(6);
-    const complete = posts().find((p) => p.path.endsWith("/complete"))!;
+    const complete = posts().find(
+      (p) => p.path === `/api/uploads/${FILE_ID}`,
+    )!;
     const sentParts = complete.body.parts as { partNumber: number }[];
     expect(sentParts.map((p) => p.partNumber)).toEqual([1, 2, 3, 4, 5, 6]);
   });
@@ -345,7 +347,7 @@ describe("upload manager", () => {
             expiresAt: futureExpiry(),
           });
         }
-        if (path.endsWith("/complete")) {
+        if (init?.method === "PUT") {
           return Promise.reject(
             new ApiError(400, "checksum_mismatch", "bad digest"),
           );

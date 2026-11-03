@@ -2,10 +2,10 @@ import {
   Body,
   Controller,
   Get,
-  HttpCode,
   Inject,
   Param,
   Post,
+  Put,
   Query,
 } from "@nestjs/common";
 import { Claims, RequireUser } from "@docbridge/auth-core";
@@ -58,8 +58,7 @@ export class UploadsController {
     return this.uploads.createUpload(claims.sub, body);
   }
 
-  @Post(":fileId/complete")
-  @HttpCode(200)
+  @Put(":fileId")
   @RequireUser()
   completeUpload(
     @Claims() claims: UserClaims,

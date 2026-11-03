@@ -34,8 +34,9 @@ export function replaceTeams(
 }
 
 export function disableUser(id: string): Promise<void> {
-  return session.authFetch<void>(`/auth/users/${id}/disable`, {
-    method: "POST",
+  return session.authFetch<void>(`/auth/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "disabled" }),
   });
 }
 

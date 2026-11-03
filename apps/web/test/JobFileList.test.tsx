@@ -57,7 +57,8 @@ describe("JobFileList", () => {
     await user.click(screen.getAllByRole("button", { name: "Download" })[0]);
 
     expect(authFetch).toHaveBeenCalledWith(
-      `/api/jobs/${JOB_ID}/files/${FILE_A}/download`,
+      `/api/jobs/${JOB_ID}/files/${FILE_A}/download-url`,
+      { method: "POST" },
     );
     await waitFor(() =>
       expect(openUrl).toHaveBeenCalledWith(

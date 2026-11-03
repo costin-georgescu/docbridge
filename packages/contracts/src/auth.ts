@@ -36,6 +36,12 @@ export const ReplaceTeamsRequest = z.object({
 
 export type ReplaceTeamsRequest = z.infer<typeof ReplaceTeamsRequest>;
 
+export const UpdateUserRequest = z.object({
+  status: z.literal("disabled"),
+});
+
+export type UpdateUserRequest = z.infer<typeof UpdateUserRequest>;
+
 export const UserResponse = z.object({
   id: z.uuid(),
   email: z.string(),

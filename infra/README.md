@@ -251,3 +251,42 @@ What survives (per the synthesized template):
 Leftovers to clean by hand after destroy: retained buckets/keys, the RDS
 (prod), the `docbridge-github-oidc` stack + OIDC provider, and the hosted
 zones (created manually, never in CFN).
+
+### Post-teardown cleanup checklist
+
+Set `ENV=staging`, `ACCOUNT=<account id>`, `REGION=<region>` first. The KMS
+keys have no aliases, so capture their ids **before** `cdk destroy`:
+
+```bash
+aws cloudformation describe-stack-resources --stack-name DocBridge-$ENV \
+  --query "StackResources[?ResourceType=='AWS::KMS::Key'].PhysicalResourceId" \
+  --output text
+```
+
+After destroy:
+
+```bash
+# 1. Retained S3 buckets (versioning is off, so a plain recursive delete works)
+for b in staging platform; do
+  aws s3 rb s3://docbridge-$b-$ENV-$ACCOUNT --force
+done
+
+# 2. Retained KMS keys (minimum 7-day wait; billing stops once pending deletion)
+for k in <key-id-1> <key-id-2> <key-id-3> <key-id-4>; do
+  aws kms schedule-key-deletion --key-id $k --pending-window-in-days 7
+done
+
+# 3. Hosted zone: delete every non-NS/SOA record first, then the zone
+aws route53 list-resource-record-sets --hosted-zone-id <zone-id>
+aws route53 delete-hosted-zone --id <zone-id>
+
+# 4. Optional: GitHub OIDC stack/provider, CDK bootstrap
+aws cloudformation delete-stack --stack-name docbridge-github-oidc
+aws cloudformation delete-stack --stack-name CDKToolkit
+aws s3 rb s3://cdk-hnb659fds-assets-$ACCOUNT-$REGION --force
+```
+
+Then confirm nothing is still billing: Cost Explorer for the next 2 days, and
+check for leftover CloudWatch log groups, Elastic IPs and snapshots of the
+RDS instance (`aws rds describe-db-snapshots`). The registered domain itself
+renews separately; disable auto-renew in Route 53 if you don't want to keep it.

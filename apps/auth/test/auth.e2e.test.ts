@@ -280,10 +280,10 @@ run("auth e2e", () => {
     expect(replaced.body.teamIds).toEqual([TEAM_2]);
 
     await auth(
-      request(app.getHttpServer()).post(
-        `/auth/users/${created.body.id}/disable`,
-      ),
-    ).expect(204);
+      request(app.getHttpServer()).patch(`/auth/users/${created.body.id}`),
+    )
+      .send({ status: "disabled" })
+      .expect(204);
     const disabledLogin = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email: "e2e-created@e2e.test", password: PASSWORD })

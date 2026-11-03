@@ -45,11 +45,20 @@ export const TreeQuery = z.object({
 
 export type TreeQuery = z.infer<typeof TreeQuery>;
 
-export const ResolveFoldersRequest = z.object({
-  folderIds: z.array(z.uuid()).min(1).max(2000),
+export const ResolveFoldersQuery = z.object({
+  ids: z
+    .string()
+    .transform((s) =>
+      s
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0),
+    )
+    .pipe(z.array(z.uuid()).min(1).max(2000))
+    .transform((ids) => [...new Set(ids)]),
 });
 
-export type ResolveFoldersRequest = z.infer<typeof ResolveFoldersRequest>;
+export type ResolveFoldersQuery = z.infer<typeof ResolveFoldersQuery>;
 
 export const ResolveFoldersResponse = z.object({
   resolved: z.array(
