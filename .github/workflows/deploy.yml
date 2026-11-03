@@ -229,21 +229,25 @@ jobs:
           steps.env_name.outputs.name == 'staging'
         run: scripts/aws/run-task.sh infra/outputs.json "DocBridge-${{ steps.env_name.outputs.name }}" SeedTaskDef
 
-      # The SPA calls api.<domain> for /api, /auth and /tree; without this
-      # the bundle defaults to same-origin app.<domain>, which CloudFront
-      # serves from S3 only. Flow E will move where the domain comes from;
-      # keep the lookup isolated in this single step.
+      # Domain mode: the SPA calls api.<domain> for /api, /auth and /tree.
+      # CloudFront-only mode (no domainName): leave VITE_API_BASE_URL
+      # empty — the bundle defaults to same-origin, where the CloudFront
+      # /api/*, /auth/* and /tree behaviors reach the internal ALB.
       - name: Resolve api origin for the web build
         id: api_base
         working-directory: infra
         run: |
           E="${{ steps.env_name.outputs.name }}"
           if [ -n "$DOCBRIDGE_ENVIRONMENTS" ]; then
-            DOMAIN=$(printf '%s' "$DOCBRIDGE_ENVIRONMENTS" | jq -r --arg e "$E" '.[$e].domainName')
+            DOMAIN=$(printf '%s' "$DOCBRIDGE_ENVIRONMENTS" | jq -r --arg e "$E" '.[$e].domainName // empty')
           else
-            DOMAIN=$(jq -r --arg e "$E" '.context.environments[$e].domainName' cdk.json)
+            DOMAIN=$(jq -r --arg e "$E" '.context.environments[$e].domainName // empty' cdk.json)
           fi
-          echo "api_base=https://api.$DOMAIN" >> "$GITHUB_OUTPUT"
+          if [ -n "$DOMAIN" ]; then
+            echo "api_base=https://api.$DOMAIN" >> "$GITHUB_OUTPUT"
+          else
+            echo "api_base=" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish web bundle
         env:
           VITE_API_BASE_URL: ${{ steps.api_base.outputs.api_base }}

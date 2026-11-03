@@ -8,6 +8,7 @@ describe("loadConfig", () => {
       NODE_ENV: "development",
       LOG_LEVEL: "info",
       AWS_REGION: "eu-central-1",
+      TRUST_PROXY_HOPS: 1,
     });
   });
 

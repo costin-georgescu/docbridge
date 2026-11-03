@@ -91,6 +91,43 @@ describe("resolveEnvironments", () => {
     expect(resolveEnvironments({ context: envs, env: {} })).toEqual(envs);
   });
 
+  it("accepts an environment with no domain (CloudFront-only mode)", () => {
+    const envs = {
+      staging: { account: "123456789012", region: "eu-central-1" },
+    };
+    expect(resolveEnvironments({ context: envs, env: {} })).toEqual(envs);
+  });
+
+  it.each([
+    ["domainName only", { domainName: "x.example.com" }],
+    ["hostedZoneId only", { hostedZoneId: "ZABC123" }],
+  ])("rejects %s without the other domain field", (_label, extra) => {
+    const envs = {
+      staging: { account: "123456789012", region: "eu-central-1", ...extra },
+    };
+    expect(() => resolveEnvironments({ context: envs, env: {} })).toThrow(
+      /staging\.domainName: domainName and hostedZoneId must be set together/,
+    );
+  });
+
+  it.each([
+    ["domainName", { domainName: "https://x.com" }],
+    ["hostedZoneId", { hostedZoneId: "placeholder" }],
+  ])("still rejects invalid %s when the pair is present", (field, bad) => {
+    const envs = {
+      staging: {
+        account: "123456789012",
+        region: "eu-central-1",
+        domainName: "x.example.com",
+        hostedZoneId: "ZABC123",
+        ...bad,
+      },
+    };
+    expect(() => resolveEnvironments({ context: envs, env: {} })).toThrow(
+      new RegExp(`staging\\.${field}`),
+    );
+  });
+
   it("accepts a valid alarmEmail", () => {
     const envs = {
       staging: { ...STAGING, alarmEmail: "oncall@example.com" },

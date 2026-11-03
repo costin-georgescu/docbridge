@@ -21,10 +21,27 @@ function validate(name: string, raw: unknown): EnvironmentConfig {
     fail(name, "<env>", "must be an object");
   }
   const c = raw as Record<string, unknown>;
-  if (typeof c.domainName !== "string" || !HOSTNAME.test(c.domainName)) {
+  // Domain is optional: unset means the environment is served from the
+  // default *.cloudfront.net name. Both fields or neither.
+  const hasDomain = c.domainName !== undefined;
+  const hasZone = c.hostedZoneId !== undefined;
+  if (hasDomain !== hasZone) {
+    fail(
+      name,
+      "domainName",
+      "domainName and hostedZoneId must be set together",
+    );
+  }
+  if (
+    hasDomain &&
+    (typeof c.domainName !== "string" || !HOSTNAME.test(c.domainName))
+  ) {
     fail(name, "domainName", "must be a hostname (no scheme or trailing dot)");
   }
-  if (typeof c.hostedZoneId !== "string" || !ZONE_ID.test(c.hostedZoneId)) {
+  if (
+    hasZone &&
+    (typeof c.hostedZoneId !== "string" || !ZONE_ID.test(c.hostedZoneId))
+  ) {
     fail(name, "hostedZoneId", "must look like Z<alnum>+");
   }
   if (typeof c.account !== "string" || !ACCOUNT.test(c.account)) {
@@ -51,8 +68,8 @@ function validate(name: string, raw: unknown): EnvironmentConfig {
     fail(name, "monthlyBudgetUsd", "must be a positive finite number");
   }
   return {
-    domainName: c.domainName as string,
-    hostedZoneId: c.hostedZoneId as string,
+    domainName: c.domainName as string | undefined,
+    hostedZoneId: c.hostedZoneId as string | undefined,
     account: c.account as string,
     region: c.region as string,
     alarmEmail: alarmEmail as string | undefined,
@@ -77,7 +94,7 @@ export function resolveEnvironments({
     } catch {
       throw new Error(
         "DOCBRIDGE_ENVIRONMENTS is not valid JSON (expected an " +
-          "{ <name>: {domainName, hostedZoneId, account, region} } object)",
+          "{ <name>: {account, region, domainName?, hostedZoneId?} } object)",
       );
     }
   }

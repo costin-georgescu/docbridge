@@ -3,14 +3,10 @@
   "context": {
     "environments": {
       "staging": {
-        "domainName": "staging.docbridge.example.com",
-        "hostedZoneId": "ZPLACEHOLDER1",
         "account": "111111111111",
         "region": "eu-central-1"
       },
       "production": {
-        "domainName": "docbridge.example.com",
-        "hostedZoneId": "ZPLACEHOLDER2",
         "account": "111111111111",
         "region": "eu-central-1"
       }

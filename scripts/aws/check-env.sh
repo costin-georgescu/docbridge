@@ -25,7 +25,8 @@ fi
 if [ "$ACCOUNT" = "111111111111" ]; then
   echo "environment \"$ENV_NAME\" still uses the placeholder account $ACCOUNT." >&2
   echo "Set the DOCBRIDGE_ENVIRONMENTS repo variable (JSON shaped like" >&2
-  echo "cdk.json context.environments) with the real account/zone/domain." >&2
+  echo "cdk.json context.environments) with the real account (and" >&2
+  echo "domainName/hostedZoneId if the environment uses a domain)." >&2
   exit 1
 fi
 echo "check-env: $ENV_NAME -> account $ACCOUNT"

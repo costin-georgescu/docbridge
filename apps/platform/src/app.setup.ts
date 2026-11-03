@@ -6,9 +6,10 @@ import { config } from "./config";
 
 export function configureApp(app: INestApplication): void {
   app.use(securityHeaders);
-  // One trusted proxy hop: the ALB sets X-Forwarded-For, so req.ip is the
-  // real client address for the per-IP rate limits.
-  (app as NestExpressApplication).set("trust proxy", 1);
+  // X-Forwarded-For is set by the edge so req.ip is the real client for
+  // the per-IP rate limits: 1 hop behind the public ALB, 2 behind
+  // CloudFront -> internal ALB (TRUST_PROXY_HOPS; default 1 for local dev).
+  (app as NestExpressApplication).set("trust proxy", config.TRUST_PROXY_HOPS);
   app.useGlobalFilters(new HttpErrorFilter());
   if (config.WEB_ORIGIN) {
     app.enableCors({ origin: config.WEB_ORIGIN, credentials: true });

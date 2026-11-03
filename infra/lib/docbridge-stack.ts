@@ -26,8 +26,11 @@ import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 
 export interface EnvironmentConfig {
-  domainName: string;
-  hostedZoneId: string;
+  // Both set -> app./api. subdomains, ACM certs, Route 53 records and an
+  // internet-facing HTTPS ALB. Both unset -> CloudFront-only mode on the
+  // default *.cloudfront.net name with an internal ALB behind a VPC origin.
+  domainName?: string;
+  hostedZoneId?: string;
   account: string;
   region: string;
   alarmEmail?: string;
@@ -128,7 +131,8 @@ export interface DocBridgeStackProps extends cdk.StackProps {
   envName: string;
   config: EnvironmentConfig;
   imageTag: string;
-  webCertificateArn: string;
+  // Only set in domain mode (no CertStack exists without a domain).
+  webCertificateArn?: string;
   repos: Record<AppImage, ecr.IRepository>;
   // False on the very first deploy (-c firstDeploy=true): services get
   // desiredCount 0 until the DB bootstrap + migrations + JWT key have run.
@@ -140,7 +144,16 @@ export class DocBridgeStack extends cdk.Stack {
     super(scope, id, props);
     const { envName, config } = props;
     const domain = config.domainName;
-    const webOrigin = `https://app.${domain}`;
+    // In CloudFront-only mode the web origin is the distribution itself,
+    // which is declared further down — resolve lazily so the bucket CORS
+    // and task env below can already reference it.
+    const distributionRef: { current?: cloudfront.Distribution } = {};
+    const webOrigin = cdk.Lazy.string({
+      produce: () =>
+        domain !== undefined
+          ? `https://app.${domain}`
+          : `https://${distributionRef.current!.distributionDomainName}`,
+    });
 
     // ---------- Network ----------
     // One NAT gateway keeps cost down; add a second for real HA later.
@@ -158,20 +171,25 @@ export class DocBridgeStack extends cdk.Stack {
       service: ec2.GatewayVpcEndpointAwsService.S3,
     });
 
-    // ---------- DNS + certificates ----------
-    const zone = route53.HostedZone.fromHostedZoneAttributes(this, "Zone", {
-      hostedZoneId: config.hostedZoneId,
-      zoneName: domain,
-    });
-    const albCertificate = new acm.Certificate(this, "AlbCertificate", {
-      domainName: `api.${domain}`,
-      validation: acm.CertificateValidation.fromDns(zone),
-    });
-    const webCertificate = acm.Certificate.fromCertificateArn(
-      this,
-      "WebCertificate",
-      props.webCertificateArn,
-    );
+    // ---------- DNS + certificates (domain mode only) ----------
+    let zone: route53.IHostedZone | undefined;
+    let albCertificate: acm.ICertificate | undefined;
+    let webCertificate: acm.ICertificate | undefined;
+    if (domain !== undefined) {
+      zone = route53.HostedZone.fromHostedZoneAttributes(this, "Zone", {
+        hostedZoneId: config.hostedZoneId!,
+        zoneName: domain,
+      });
+      albCertificate = new acm.Certificate(this, "AlbCertificate", {
+        domainName: `api.${domain}`,
+        validation: acm.CertificateValidation.fromDns(zone),
+      });
+      webCertificate = acm.Certificate.fromCertificateArn(
+        this,
+        "WebCertificate",
+        props.webCertificateArn!,
+      );
+    }
 
     // ---------- KMS ----------
     const stagingKey = new kms.Key(this, "StagingKey", {
@@ -362,25 +380,47 @@ export class DocBridgeStack extends cdk.Stack {
     }
 
     // ---------- ALB ----------
-    const albSg = new ec2.SecurityGroup(this, "AlbSg", { vpc });
-    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
-    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
-    const alb = new elbv2.ApplicationLoadBalancer(this, "Alb", {
-      vpc,
-      internetFacing: true,
-      securityGroup: albSg,
-    });
-    alb.addRedirect({ sourcePort: 80, targetPort: 443 });
-    const listener = alb.addListener("HttpsListener", {
-      port: 443,
-      certificates: [albCertificate],
-      defaultAction: elbv2.ListenerAction.fixedResponse(404, {
-        contentType: "application/json",
-        messageBody: JSON.stringify({
-          error: { code: "not_found", message: "route not found" },
-        }),
+    // Domain mode: internet-facing, 443 HTTPS (api.<domain>) + 80 redirect.
+    // CloudFront-only mode: internal, one HTTP :80 listener reached through
+    // the VPC origin — ingress stays inside the VPC CIDR.
+    const notFoundAction = elbv2.ListenerAction.fixedResponse(404, {
+      contentType: "application/json",
+      messageBody: JSON.stringify({
+        error: { code: "not_found", message: "route not found" },
       }),
     });
+    const albSg = new ec2.SecurityGroup(this, "AlbSg", { vpc });
+    let listener: elbv2.ApplicationListener;
+    let alb: elbv2.ApplicationLoadBalancer;
+    if (domain !== undefined) {
+      albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
+      albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
+      alb = new elbv2.ApplicationLoadBalancer(this, "Alb", {
+        vpc,
+        internetFacing: true,
+        securityGroup: albSg,
+      });
+      alb.addRedirect({ sourcePort: 80, targetPort: 443 });
+      listener = alb.addListener("HttpsListener", {
+        port: 443,
+        certificates: [albCertificate!],
+        defaultAction: notFoundAction,
+      });
+    } else {
+      albSg.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(80));
+      alb = new elbv2.ApplicationLoadBalancer(this, "Alb", {
+        vpc,
+        internetFacing: false,
+        vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        securityGroup: albSg,
+      });
+      listener = alb.addListener("HttpListener", {
+        port: 80,
+        // Reached via the VPC origin only — don't open :80 to the world.
+        open: false,
+        defaultAction: notFoundAction,
+      });
+    }
 
     // ---------- Services ----------
     const servicesSg = new ec2.SecurityGroup(this, "ServicesSg", { vpc });
@@ -484,6 +524,9 @@ export class DocBridgeStack extends cdk.Stack {
         TASKS_QUEUE_URL: tasksQueue.queueUrl,
         UPLOAD_EVENTS_QUEUE_URL: uploadEventsQueue.queueUrl,
         WEB_ORIGIN: webOrigin,
+        // Proxy hops to the client IP: 1 behind the public ALB, 2 behind
+        // CloudFront -> internal ALB.
+        TRUST_PROXY_HOPS: domain !== undefined ? "1" : "2",
         DB_HOST: db.instanceEndpoint.hostname,
         DB_SSL,
         DB_NAME: {
@@ -642,9 +685,11 @@ export class DocBridgeStack extends cdk.Stack {
       "SecurityHeaders",
       {
         securityHeadersBehavior: {
-          // TDD 5.5: the SPA talks to api.<domain> (ALB) and straight to S3
-          // via presigned URLs; everything else stays same-origin. Verify
-          // in staging before production (5.4).
+          // TDD 5.5: the SPA talks to the API and straight to S3 via
+          // presigned URLs; everything else stays same-origin. In domain
+          // mode the API lives at api.<domain>; in CloudFront-only mode it
+          // is same-origin behind /api, /auth and /tree on the ALB VPC
+          // origin. Verify in staging before production (5.4).
           contentSecurityPolicy: {
             contentSecurityPolicy: [
               "default-src 'self'",
@@ -652,7 +697,9 @@ export class DocBridgeStack extends cdk.Stack {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data:",
               "font-src 'self' data:",
-              `connect-src 'self' https://api.${domain} https://*.s3.${config.region}.amazonaws.com`,
+              domain !== undefined
+                ? `connect-src 'self' https://api.${domain} https://*.s3.${config.region}.amazonaws.com`
+                : `connect-src 'self' https://*.s3.${config.region}.amazonaws.com`,
               "object-src 'none'",
               "base-uri 'none'",
               "form-action 'self'",
@@ -663,8 +710,9 @@ export class DocBridgeStack extends cdk.Stack {
           },
           strictTransportSecurity: {
             accessControlMaxAge: cdk.Duration.days(365),
-            includeSubdomains: true,
-            preload: true,
+            // No subdomains/preload on *.cloudfront.net — we don't own it.
+            includeSubdomains: domain !== undefined,
+            preload: domain !== undefined,
             override: true,
           },
           contentTypeOptions: { override: true },
@@ -689,49 +737,95 @@ export class DocBridgeStack extends cdk.Stack {
         },
       },
     );
+    // SPA fallback: a viewer-request function rewrites extensionless paths
+    // to /index.html on the S3 behavior only. A distribution-wide
+    // errorResponses would also rewrite API 403/404 JSON in CF-only mode.
+    const spaRewrite = new cloudfront.Function(this, "SpaRewrite", {
+      code: cloudfront.FunctionCode.fromInline(
+        [
+          "function handler(event) {",
+          "  var request = event.request;",
+          "  var last = request.uri.substring(request.uri.lastIndexOf('/') + 1);",
+          "  if (last.indexOf('.') === -1) {",
+          "    request.uri = '/index.html';",
+          "  }",
+          "  return request;",
+          "}",
+        ].join("\n"),
+      ),
+    });
+    // One shared VPC origin for the internal ALB (CF-only mode).
+    const albBehavior: cloudfront.BehaviorOptions = {
+      origin: origins.VpcOrigin.withApplicationLoadBalancer(alb, {
+        protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+        httpPort: 80,
+      }),
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+      cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+      // AllViewerExceptHostHeader forwards every viewer header (cookies
+      // included, so the /auth refresh cookie passes through); the
+      // CachingDisabled managed cache policy carries the Authorization
+      // header — it cannot be allow-listed in an origin request policy.
+      originRequestPolicy:
+        cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      responseHeadersPolicy: responseHeaders,
+    };
     const distribution = new cloudfront.Distribution(this, "Distribution", {
       defaultRootObject: "index.html",
-      domainNames: [`app.${domain}`],
-      certificate: webCertificate,
+      ...(domain !== undefined
+        ? { domainNames: [`app.${domain}`], certificate: webCertificate }
+        : {}),
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(webBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         responseHeadersPolicy: responseHeaders,
+        functionAssociations: [
+          {
+            function: spaRewrite,
+            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+          },
+        ],
       },
-      // SPA fallback: serve index.html on unknown routes.
-      errorResponses: [403, 404].map((code) => ({
-        httpStatus: code,
-        responseHttpStatus: 200,
-        responsePagePath: "/index.html",
-        ttl: cdk.Duration.seconds(0),
-      })),
+      // CloudFront-only mode: the API, the platform's /tree and the public
+      // auth paths go to the internal ALB via a VPC origin. The ALB
+      // listener rules still enumerate exactly which paths reach a target.
+      additionalBehaviors:
+        domain !== undefined
+          ? undefined
+          : Object.fromEntries(
+              ["/api/*", "/tree", "/auth/*"].map((path) => [path, albBehavior]),
+            ),
     });
+    distributionRef.current = distribution;
 
-    new route53.ARecord(this, "ApiARecord", {
-      zone,
-      recordName: `api.${domain}`,
-      target: route53.RecordTarget.fromAlias(
-        new r53targets.LoadBalancerTarget(alb),
-      ),
-    });
-    new route53.AaaaRecord(this, "ApiAaaaRecord", {
-      zone,
-      recordName: `api.${domain}`,
-      target: route53.RecordTarget.fromAlias(
-        new r53targets.LoadBalancerTarget(alb),
-      ),
-    });
-    for (const [id, cls] of [
-      ["AppARecord", route53.ARecord],
-      ["AppAaaaRecord", route53.AaaaRecord],
-    ] as const) {
-      new cls(this, id, {
-        zone,
-        recordName: `app.${domain}`,
+    if (domain !== undefined) {
+      new route53.ARecord(this, "ApiARecord", {
+        zone: zone!,
+        recordName: `api.${domain}`,
         target: route53.RecordTarget.fromAlias(
-          new r53targets.CloudFrontTarget(distribution),
+          new r53targets.LoadBalancerTarget(alb),
         ),
       });
+      new route53.AaaaRecord(this, "ApiAaaaRecord", {
+        zone: zone!,
+        recordName: `api.${domain}`,
+        target: route53.RecordTarget.fromAlias(
+          new r53targets.LoadBalancerTarget(alb),
+        ),
+      });
+      for (const [id, cls] of [
+        ["AppARecord", route53.ARecord],
+        ["AppAaaaRecord", route53.AaaaRecord],
+      ] as const) {
+        new cls(this, id, {
+          zone: zone!,
+          recordName: `app.${domain}`,
+          target: route53.RecordTarget.fromAlias(
+            new r53targets.CloudFrontTarget(distribution),
+          ),
+        });
+      }
     }
 
     // ---------- Migration task definitions ----------
@@ -1087,6 +1181,7 @@ export class DocBridgeStack extends cdk.Stack {
     new cdk.CfnOutput(this, "DistributionId", {
       value: distribution.distributionId,
     });
+    new cdk.CfnOutput(this, "WebUrl", { value: webOrigin });
     new cdk.CfnOutput(this, "ServiceNames", {
       value: Object.values(fargateServices)
         .map((s) => s.serviceName)

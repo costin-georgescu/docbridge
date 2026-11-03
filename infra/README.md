@@ -1,8 +1,14 @@
 # Deploying DocBridge to AWS
 
 Everything below is copy-pasteable. The only manual work is creating an AWS
-account, a domain/hosted zone, and setting the printed variables. All deploy
-logic lives in `scripts/aws/` and `.github/workflows/deploy.yml`.
+account and setting the printed variables. All deploy logic lives in
+`scripts/aws/` and `.github/workflows/deploy.yml`.
+
+By default each environment deploys with **no custom domain** — the whole
+app is served from the distribution's default `*.cloudfront.net` address
+(the `WebUrl` stack output), with `/api/*`, `/auth/*` and `/tree` routed to
+an internal ALB behind a CloudFront VPC origin. Adding a domain later is a
+config change, not a rebuild — see Step 0/Step 2.
 
 Estimated durations are rough and flagged — AWS timings vary.
 
@@ -12,12 +18,19 @@ Estimated durations are rough and flagged — AWS timings vary.
 | ------------------ | ------------------------------------------------------------------------------------ |
 | AWS account        | Create one; set a billing alarm before anything else.                                |
 | Admin credentials  | IAM Identity Center (SSO) user or IAM admin user; `aws sso login` / `aws configure`. |
-| Domain you control | You must be able to set NS records at the registrar.                                 |
+| Domain you control | Optional — only for domain mode; you must be able to set NS records at the registrar. |
 | Docker             | Building the service images locally (`first-deploy.sh`).                             |
 | Node 24 + pnpm     | `corepack enable`; the repo's `pnpm install` must work.                              |
 | AWS CLI v2, jq     | Used by all helper scripts.                                                          |
 
-## Step 0 — DNS (do this first, it blocks ACM validation)
+## Step 0 — DNS (optional; only for domain mode)
+
+Skip this entirely to deploy on the default `*.cloudfront.net` address —
+the recommended first path. Come back here when you want a custom domain:
+create the hosted zone below, set **both** `domainName` and `hostedZoneId`
+in `DOCBRIDGE_ENVIRONMENTS`, and redeploy. Users must log in again
+(session cookies are scoped to the old origin), and previously shared
+`*.cloudfront.net` links stop working unless you redirect them.
 
 The stack names a Route 53 **public hosted zone** exactly after the
 environment's `domainName`. For `staging.example.com` that means a zone for
@@ -56,20 +69,16 @@ variables → Actions → **Variables**:
 
 - `AWS_DEPLOY_ROLE_ARN` — the role ARN from step 1.
 - `DOCBRIDGE_ENVIRONMENTS` — JSON shaped like `cdk.json`'s
-  `context.environments`; fill in your zone id/domain/email:
+  `context.environments`; fill in your account/region/email:
 
 ```json
 {
   "staging": {
-    "domainName": "staging.example.com",
-    "hostedZoneId": "Z1234567890ABCDEFGHIJ",
     "account": "123456789012",
     "region": "eu-central-1",
     "alarmEmail": "oncall@example.com"
   },
   "production": {
-    "domainName": "example.com",
-    "hostedZoneId": "Z1234567890ABCDEFGHIJ",
     "account": "123456789012",
     "region": "eu-central-1",
     "alarmEmail": "oncall@example.com"
@@ -77,7 +86,9 @@ variables → Actions → **Variables**:
 }
 ```
 
-`hostedZoneId` is the Route 53 zone id from Step 0 (`alarmEmail` optional —
+For domain mode add `"domainName"` and `"hostedZoneId"` (the zone id from
+Step 0) to each environment — they must be set together. `alarmEmail`
+optional —
 subscribes that address to the alarm topic AND enables the spend alerts
 below; confirm the SNS email). `monthlyBudgetUsd` is optional too and
 overrides the default $100 monthly budget used by the spend alerts.
@@ -124,8 +135,23 @@ Subsequent deploys are the same workflow without `first_deploy` — see
 
 ## Step 4 — Verify
 
-- `curl https://api.<domain>/health` → `{"status":"ok"}`.
-- Open `https://app.<domain>` and log in. The seed (`--seed`, staging)
+The public URL is the `WebUrl` output — `https://app.<domain>` in domain
+mode, `https://<id>.cloudfront.net` without a domain. Read it with:
+
+```bash
+jq -r '.["DocBridge-<env>"].WebUrl' infra/outputs.json
+```
+
+- `/health` is not publicly routed (target-group health checks only). As a
+  public smoke test, `curl -i <WebUrl>/auth/.well-known/jwks.json` (CF-only)
+  or `curl -i https://api.<domain>/auth/.well-known/jwks.json` (domain
+  mode) → 200 with the JWKS JSON.
+- CF-only: `curl <WebUrl>/api/…` returns API JSON, not `index.html`;
+  `curl -i <WebUrl>/auth/service-token` → 404 `route not found` from the
+  ALB default action.
+- `curl -I <WebUrl>/` shows the CloudFront security headers (CSP, HSTS,
+  X-Frame-Options DENY).
+- Open `<WebUrl>` and log in. The seed (`--seed`, staging)
   creates these accounts — the password is generated per environment and
   stored in Secrets Manager; read it with:
 
@@ -157,12 +183,13 @@ Subsequent deploys are the same workflow without `first_deploy` — see
 - [ ] RDS failover: submit a job, then
       `aws rds reboot-db-instance --db-instance-identifier <id> --force-failover`
       mid-flight; the job continues after reconnect.
-- [ ] CORS/cookies: log in via `https://app.<domain>` — requests go to
-      `api.<domain>` with `credentials: include`; check Set-Cookie is
-      Secure/SameSite and the CORS preflight only allows `app.<domain>`.
+- [ ] CORS/cookies: log in via `<WebUrl>` — in domain mode requests go to
+      `api.<domain>` with `credentials: include` (check the preflight only
+      allows `app.<domain>`); in CF-only mode they are same-origin. Either
+      way, check Set-Cookie is Secure/SameSite=Strict.
 - [ ] Lifecycle: `aws s3api get-bucket-lifecycle-configuration --bucket
     docbridge-staging-<env>-<account>` shows the 32-day staged-file expiry + 7-day multipart abort; objects carry `retention=completed`.
-- [ ] Headers: `curl -I https://app.<domain>/` shows CSP, HSTS,
+- [ ] Headers: `curl -I <WebUrl>/` shows CSP, HSTS,
       X-Frame-Options DENY etc. from the CloudFront response policy.
 
 ## Routine deploys
@@ -233,7 +260,8 @@ DOCBRIDGE_ENVIRONMENTS='…' pnpm --filter @docbridge/infra exec cdk destroy \
 ```
 
 Destroy order matters (main → cert → repos) since the main stack imports
-the cert ARN and ECR repo ARNs.
+the cert ARN and ECR repo ARNs. Without a domain there is no
+`DocBridgeCert-<env>` stack — drop it from the command.
 
 What survives (per the synthesized template):
 

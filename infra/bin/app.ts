@@ -22,20 +22,25 @@ for (const [envName, env] of Object.entries(environments)) {
   const repos = new ReposStack(app, `DocBridgeRepos-${envName}`, props);
   // CloudFront certificates must live in us-east-1: a separate stack
   // whose ARN is passed to the main stack via a cross-region reference.
-  const cert = new CertStack(app, `DocBridgeCert-${envName}`, {
-    env: { account: env.account, region: "us-east-1" },
-    crossRegionReferences: true,
-    envName,
-    domainName: env.domainName,
-    hostedZoneId: env.hostedZoneId,
-  });
+  // Only needed in domain mode — without a domain the distribution serves
+  // its default *.cloudfront.net name and needs no certificate.
+  const cert =
+    env.domainName !== undefined
+      ? new CertStack(app, `DocBridgeCert-${envName}`, {
+          env: { account: env.account, region: "us-east-1" },
+          crossRegionReferences: true,
+          envName,
+          domainName: env.domainName,
+          hostedZoneId: env.hostedZoneId!,
+        })
+      : undefined;
   new DocBridgeStack(app, `DocBridge-${envName}`, {
     ...props,
     crossRegionReferences: true,
     envName,
     config: env,
     imageTag,
-    webCertificateArn: cert.certificate.certificateArn,
+    webCertificateArn: cert?.certificate.certificateArn,
     repos: repos.repos,
     servicesEnabled: !firstDeploy,
   });

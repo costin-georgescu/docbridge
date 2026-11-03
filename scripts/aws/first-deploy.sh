@@ -130,22 +130,32 @@ echo "== 8/8 publish web bundle"
 if $SKIP_WEB; then
   echo "skipped (--skip-web)"
 elif $DRY_RUN; then
-  echo "+ VITE_API_BASE_URL=https://api.<domain> pnpm --filter @docbridge/web build"
+  echo "+ VITE_API_BASE_URL=https://api.<domain> pnpm --filter @docbridge/web build  # domain mode"
+  echo "+ pnpm --filter @docbridge/web build                                        # cloudfront-only mode (same-origin)"
   echo "+ aws s3 sync apps/web/dist s3://<WebBucketName> --delete"
   echo "+ aws cloudfront create-invalidation --distribution-id <DistributionId> --paths /*"
 else
   DOMAIN=$(printf '%s' "${DOCBRIDGE_ENVIRONMENTS:-}" | jq -r --arg e "$ENV_NAME" '.[$e].domainName // empty')
   if [ -z "$DOMAIN" ]; then
-    DOMAIN=$(jq -r --arg e "$ENV_NAME" '.context.environments[$e].domainName' "$REPO_ROOT/infra/cdk.json")
+    DOMAIN=$(jq -r --arg e "$ENV_NAME" '.context.environments[$e].domainName // empty' "$REPO_ROOT/infra/cdk.json")
   fi
   BUCKET=$(jq -r --arg s "$STACK" '.[$s].WebBucketName' infra/outputs.json)
   DIST=$(jq -r --arg s "$STACK" '.[$s].DistributionId' infra/outputs.json)
-  VITE_API_BASE_URL="https://api.$DOMAIN" pnpm --filter @docbridge/web build
+  if [ -n "$DOMAIN" ]; then
+    VITE_API_BASE_URL="https://api.$DOMAIN" pnpm --filter @docbridge/web build
+  else
+    # No domain: the API is same-origin behind the /api/*, /auth/* and
+    # /tree CloudFront behaviors — the vite default ("") applies.
+    pnpm --filter @docbridge/web build
+  fi
   aws s3 sync "$REPO_ROOT/apps/web/dist" "s3://$BUCKET" --delete
   aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
 fi
 
-if [ -n "${DOMAIN:-}" ]; then
+WEB_URL=$(jq -r --arg s "$STACK" '.[$s].WebUrl // empty' infra/outputs.json 2>/dev/null || true)
+if [ -n "$WEB_URL" ]; then
+  echo "done. Open $WEB_URL"
+elif [ -n "${DOMAIN:-}" ]; then
   echo "done. Open https://app.$DOMAIN"
 else
   echo "done."

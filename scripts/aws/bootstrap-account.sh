@@ -98,7 +98,10 @@ cat <<EOF
 
 AWS_DEPLOY_ROLE_ARN = $ROLE_ARN
 
-DOCBRIDGE_ENVIRONMENTS = {"staging":{"domainName":"<staging.your-domain>","hostedZoneId":"<zone-id>","account":"$ACCOUNT","region":"$REGION","alarmEmail":"<ops@your-domain>"},"production":{"domainName":"<your-domain>","hostedZoneId":"<zone-id>","account":"$ACCOUNT","region":"$REGION","alarmEmail":"<ops@your-domain>"}}
+DOCBRIDGE_ENVIRONMENTS = {"staging":{"account":"$ACCOUNT","region":"$REGION","alarmEmail":"<ops@your-domain>"},"production":{"account":"$ACCOUNT","region":"$REGION","alarmEmail":"<ops@your-domain>"}}
 
-Replace the <...> placeholders with your hosted zone id, domain and email.
+Replace the <...> placeholders with your email. This shape deploys each
+environment on its default *.cloudfront.net address — no domain needed.
+To use a custom domain later, add "domainName":"<your-domain>" and
+"hostedZoneId":"<zone-id>" together (both or neither) and redeploy.
 EOF

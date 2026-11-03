@@ -15,40 +15,52 @@ const config: EnvironmentConfig = {
   region: "eu-central-1",
 };
 
+// CloudFront-only mode: no domainName/hostedZoneId.
+const cfConfig: EnvironmentConfig = {
+  account: "111111111111",
+  region: "eu-central-1",
+};
+
 interface SynthOptions {
   config?: Partial<typeof config>;
   servicesEnabled?: boolean;
+  // CloudFront-only mode: start from cfConfig (no domain) instead of config.
+  cloudfrontOnly?: boolean;
 }
 
 function synth({
   config: overrides = {},
   servicesEnabled = true,
+  cloudfrontOnly = false,
 }: SynthOptions = {}) {
-  const cfg = { ...config, ...overrides };
+  const cfg = { ...(cloudfrontOnly ? cfConfig : config), ...overrides };
   const app = new cdk.App();
   const env = { account: cfg.account, region: cfg.region };
   const repos = new ReposStack(app, "DocBridgeRepos-test", { env });
-  const cert = new CertStack(app, "DocBridgeCert-test", {
-    env: { account: cfg.account, region: "us-east-1" },
-    crossRegionReferences: true,
-    envName: "test",
-    domainName: cfg.domainName,
-    hostedZoneId: cfg.hostedZoneId,
-  });
+  const cert =
+    cfg.domainName !== undefined
+      ? new CertStack(app, "DocBridgeCert-test", {
+          env: { account: cfg.account, region: "us-east-1" },
+          crossRegionReferences: true,
+          envName: "test",
+          domainName: cfg.domainName,
+          hostedZoneId: cfg.hostedZoneId!,
+        })
+      : undefined;
   const stack = new DocBridgeStack(app, "DocBridge-test", {
     env,
     crossRegionReferences: true,
     envName: "test",
     config: cfg,
     imageTag: "latest",
-    webCertificateArn: cert.certificate.certificateArn,
+    webCertificateArn: cert?.certificate.certificateArn,
     repos: repos.repos,
     servicesEnabled,
   });
   return {
     main: Template.fromStack(stack),
     repos: Template.fromStack(repos),
-    cert: Template.fromStack(cert),
+    cert: cert ? Template.fromStack(cert) : undefined,
   };
 }
 
@@ -477,12 +489,15 @@ describe("database bootstrap task", () => {
 
 describe("CloudFront certificate", () => {
   it("validates via DNS against the hosted zone", () => {
-    certTemplate.hasResourceProperties("AWS::CertificateManager::Certificate", {
-      DomainName: `app.${config.domainName}`,
-      DomainValidationOptions: Match.arrayWith([
-        Match.objectLike({ HostedZoneId: config.hostedZoneId }),
-      ]),
-    });
+    certTemplate!.hasResourceProperties(
+      "AWS::CertificateManager::Certificate",
+      {
+        DomainName: `app.${config.domainName}`,
+        DomainValidationOptions: Match.arrayWith([
+          Match.objectLike({ HostedZoneId: config.hostedZoneId }),
+        ]),
+      },
+    );
   });
 });
 
@@ -688,5 +703,234 @@ describe("DB SSL", () => {
         );
       }
     }
+  });
+});
+
+describe("domain mode (custom domain configured)", () => {
+  it("has no distribution-wide error responses (SPA fallback is a function)", () => {
+    const dists = Object.values(
+      template.findResources("AWS::CloudFront::Distribution"),
+    ) as { Properties: { DistributionConfig: Record<string, unknown> } }[];
+    expect(dists).toHaveLength(1);
+    expect(
+      dists[0].Properties.DistributionConfig.CustomErrorResponses,
+    ).toBeUndefined();
+  });
+
+  it("rewrites extensionless paths to /index.html via a viewer-request function", () => {
+    const dist = Object.values(
+      template.findResources("AWS::CloudFront::Distribution"),
+    )[0] as {
+      Properties: {
+        DistributionConfig: {
+          DefaultCacheBehavior: {
+            FunctionAssociations?: { EventType: string }[];
+          };
+        };
+      };
+    };
+    const fns =
+      dist.Properties.DistributionConfig.DefaultCacheBehavior
+        .FunctionAssociations ?? [];
+    expect(fns.map((f) => f.EventType)).toContain("viewer-request");
+  });
+
+  it("sets TRUST_PROXY_HOPS=1 on api/auth/platform task defs", () => {
+    const defs = Object.values(
+      template.findResources("AWS::ECS::TaskDefinition"),
+    ) as {
+      Properties: {
+        ContainerDefinitions: {
+          Name: string;
+          Environment?: { Name: string; Value: string }[];
+        }[];
+      };
+    }[];
+    for (const name of ["api", "auth", "platform"]) {
+      const def = defs.find((d) =>
+        d.Properties.ContainerDefinitions.some((c) => c.Name === name),
+      );
+      const container = def!.Properties.ContainerDefinitions.find(
+        (c) => c.Name === name,
+      )!;
+      expect(container.Environment).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ Name: "TRUST_PROXY_HOPS", Value: "1" }),
+        ]),
+      );
+    }
+  });
+});
+
+describe("cloudfront-only mode (no domain)", () => {
+  const cf = synth({ cloudfrontOnly: true }).main;
+
+  it("creates no Route53 records and no ACM certificates", () => {
+    cf.resourceCountIs("AWS::Route53::RecordSet", 0);
+    cf.resourceCountIs("AWS::CertificateManager::Certificate", 0);
+  });
+
+  it("has an internal ALB with a single HTTP :80 listener", () => {
+    cf.hasResourceProperties("AWS::ElasticLoadBalancingV2::LoadBalancer", {
+      Scheme: "internal",
+    });
+    const listeners = Object.values(
+      cf.findResources("AWS::ElasticLoadBalancingV2::Listener"),
+    ) as { Properties: { Port: number; Protocol: string } }[];
+    expect(listeners).toHaveLength(1);
+    expect(listeners[0].Properties.Port).toBe(80);
+    expect(listeners[0].Properties.Protocol).toBe("HTTP");
+    cf.resourceCountIs("AWS::ElasticLoadBalancingV2::Listener", 1);
+  });
+
+  it("restricts ALB ingress to the VPC CIDR on port 80", () => {
+    const sgs = Object.entries(
+      cf.findResources("AWS::EC2::SecurityGroup"),
+    ).filter(([id]) => id.includes("AlbSg"));
+    expect(sgs).toHaveLength(1);
+    const ingress = (
+      sgs[0][1] as {
+        Properties: { SecurityGroupIngress?: Record<string, unknown>[] };
+      }
+    ).Properties.SecurityGroupIngress ?? [];
+    expect(ingress).toHaveLength(1);
+    expect(ingress[0].FromPort).toBe(80);
+    const rule = JSON.stringify(ingress[0]);
+    expect(rule).toContain("CidrBlock");
+    expect(rule).not.toContain("0.0.0.0/0");
+  });
+
+  it("has no aliases and no custom error responses on the distribution", () => {
+    const dists = Object.values(
+      cf.findResources("AWS::CloudFront::Distribution"),
+    ) as {
+      Properties: {
+        DistributionConfig: Record<string, unknown> & {
+          CacheBehaviors: { PathPattern: string }[];
+        };
+      };
+    }[];
+    expect(dists).toHaveLength(1);
+    const cfg = dists[0].Properties.DistributionConfig;
+    expect(cfg.Aliases).toBeUndefined();
+    expect(cfg.CustomErrorResponses).toBeUndefined();
+  });
+
+  it("creates a VPC origin for the internal ALB", () => {
+    cf.resourceCountIs("AWS::CloudFront::VpcOrigin", 1);
+    cf.hasResourceProperties("AWS::CloudFront::VpcOrigin", {
+      VpcOriginEndpointConfig: Match.objectLike({
+        HTTPPort: 80,
+        OriginProtocolPolicy: "http-only",
+      }),
+    });
+  });
+
+  it("routes /api/*, /tree and /auth/* to the ALB uncached with all methods", () => {
+    const dist = Object.values(
+      cf.findResources("AWS::CloudFront::Distribution"),
+    )[0] as {
+      Properties: {
+        DistributionConfig: {
+          CacheBehaviors: {
+            PathPattern: string;
+            AllowedMethods: string[];
+            CachePolicyId: string;
+            FunctionAssociations?: unknown[];
+          }[];
+        };
+      };
+    };
+    const behaviors = dist.Properties.DistributionConfig.CacheBehaviors;
+    expect(behaviors.map((b) => b.PathPattern).sort()).toEqual([
+      "/api/*",
+      "/auth/*",
+      "/tree",
+    ]);
+    // CachingDisabled managed policy id.
+    const CACHING_DISABLED = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad";
+    for (const b of behaviors) {
+      expect(b.CachePolicyId).toBe(CACHING_DISABLED);
+      expect(b.AllowedMethods).toEqual([
+        "GET",
+        "HEAD",
+        "OPTIONS",
+        "PUT",
+        "PATCH",
+        "POST",
+        "DELETE",
+      ]);
+    }
+  });
+
+  it("keeps the SPA rewrite function on the default behavior", () => {
+    const dist = Object.values(
+      cf.findResources("AWS::CloudFront::Distribution"),
+    )[0] as {
+      Properties: {
+        DistributionConfig: {
+          DefaultCacheBehavior: {
+            FunctionAssociations?: { EventType: string }[];
+          };
+        };
+      };
+    };
+    const fns =
+      dist.Properties.DistributionConfig.DefaultCacheBehavior
+        .FunctionAssociations ?? [];
+    expect(fns.map((f) => f.EventType)).toContain("viewer-request");
+  });
+
+  it("drops api.<domain> from the CSP connect-src", () => {
+    const policies = cf.findResources("AWS::CloudFront::ResponseHeadersPolicy");
+    const csp = Object.values(policies)
+      .map(
+        (p) =>
+          (
+            p as {
+              Properties: {
+                ResponseHeadersPolicyConfig: {
+                  SecurityHeadersConfig: {
+                    ContentSecurityPolicy: { ContentSecurityPolicy: string };
+                  };
+                };
+              };
+            }
+          ).Properties.ResponseHeadersPolicyConfig.SecurityHeadersConfig
+            .ContentSecurityPolicy.ContentSecurityPolicy,
+      )
+      .join("\n");
+    expect(csp).not.toContain("api.");
+    expect(csp).toContain("https://*.s3.eu-central-1.amazonaws.com");
+  });
+
+  it("sets TRUST_PROXY_HOPS=2 on api/auth/platform task defs", () => {
+    const defs = Object.values(
+      cf.findResources("AWS::ECS::TaskDefinition"),
+    ) as {
+      Properties: {
+        ContainerDefinitions: {
+          Name: string;
+          Environment?: { Name: string; Value: string }[];
+        }[];
+      };
+    }[];
+    for (const name of ["api", "auth", "platform"]) {
+      const def = defs.find((d) =>
+        d.Properties.ContainerDefinitions.some((c) => c.Name === name),
+      );
+      const container = def!.Properties.ContainerDefinitions.find(
+        (c) => c.Name === name,
+      )!;
+      expect(container.Environment).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ Name: "TRUST_PROXY_HOPS", Value: "2" }),
+        ]),
+      );
+    }
+  });
+
+  it("exports the WebUrl output", () => {
+    cf.hasOutput("WebUrl", { Value: Match.anyValue() });
   });
 });

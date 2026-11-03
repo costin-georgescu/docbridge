@@ -7,6 +7,9 @@ export const baseEnvSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   AWS_REGION: z.string().min(1),
   AWS_ENDPOINT_URL: z.string().url().optional(),
+  // Trusted proxy hops for req.ip: 1 behind the public ALB, 2 behind
+  // CloudFront -> internal ALB. Local dev/tests stay at the default.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
 });
 
 export function loadConfig<T extends z.ZodTypeAny>(
