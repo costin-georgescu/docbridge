@@ -12,9 +12,11 @@ export function sha256File(file: string): Promise<string> {
   });
 }
 
+const SEED_PASSWORD = "DocBridge-Review-2026";
+
 export const SEED_USERS = {
-  admin: { email: "admin@docbridge.local", password: "password123" },
-  anna: { email: "anna@docbridge.local", password: "password123" },
+  admin: { email: "admin@docbridge.local", password: SEED_PASSWORD },
+  anna: { email: "anna@docbridge.local", password: SEED_PASSWORD },
 } as const;
 
 export async function login(page: Page, email: string, password: string) {

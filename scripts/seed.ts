@@ -107,7 +107,7 @@ async function seedAuth() {
   // SEED_PASSWORD is injected from Secrets Manager on AWS; the default
   // keeps local dev/e2e behaviour unchanged.
   const passwordHash = await argon2.hash(
-    process.env.SEED_PASSWORD ?? "password123",
+    process.env.SEED_PASSWORD ?? "DocBridge-Review-2026",
   );
   const users = [
     {
@@ -118,13 +118,13 @@ async function seedAuth() {
     },
     {
       email: "anna@docbridge.local",
-      displayName: "Anna",
+      displayName: "Site Coordinator",
       isAdmin: false,
       teamIds: [TEAM_A, TEAM_C],
     },
     {
       email: "ben@docbridge.local",
-      displayName: "Ben",
+      displayName: "Site Member",
       isAdmin: false,
       teamIds: [TEAM_B],
     },

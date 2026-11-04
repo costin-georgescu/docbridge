@@ -161,7 +161,7 @@ jq -r '.["DocBridge-<env>"].WebUrl' infra/outputs.json
   ```
 
   (the same value is injected into the seed task as `SEED_PASSWORD`; the
-  task logs also print a "grader handout" with it in the
+  task logs also print a "demo handout" with it in the
   `/docbridge/<env>/seed` log group):
   `admin@docbridge.local` (admin), `demo@docbridge.local`,
   `anna@docbridge.local`, `ben@docbridge.local`.

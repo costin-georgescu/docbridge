@@ -332,8 +332,8 @@ export class DocBridgeStack extends cdk.Stack {
       generateSecretString: { excludePunctuation: true },
     });
     // Seed/demo account password — generated per environment instead of
-    // the hardcoded local default ("password123"), which must never ship
-    // to a real deployment.
+    // the hardcoded local default, which must never ship to a real
+    // deployment.
     const seedPassword = new secrets.Secret(this, "SeedPassword", {
       secretName: `docbridge/${envName}/seed-password`,
       encryptionKey: secretsKey,

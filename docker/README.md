@@ -22,5 +22,5 @@ pnpm db:migrate                 # apply migrations to all three databases
 pnpm db:seed                    # seed platform + auth (idempotent)
 ```
 
-Seeded logins (password `password123`): `admin@docbridge.local` (admin, all
-teams), `anna@docbridge.local`, `ben@docbridge.local`.
+Seeded logins (password `DocBridge-Review-2026`): `admin@docbridge.local`
+(admin, all teams), `anna@docbridge.local`, `ben@docbridge.local`.

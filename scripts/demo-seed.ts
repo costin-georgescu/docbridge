@@ -41,9 +41,10 @@ const s3 = new S3Client({
 });
 
 const DEMO_USER_ID = "00000000-0000-7000-8000-00000000d001";
+const DEMO_EMAIL = "demo@docbridge.local";
 // SEED_PASSWORD is injected from Secrets Manager on AWS; the default
 // keeps local dev/e2e behaviour unchanged.
-const DEMO_PASSWORD = process.env.SEED_PASSWORD ?? "password123";
+const DEMO_PASSWORD = process.env.SEED_PASSWORD ?? "DocBridge-Review-2026";
 const uuid = (n: number) =>
   `00000000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`;
 const fileId = (n: number) => uuid(0xd100 + n);
@@ -1669,7 +1670,7 @@ interface DemoJob {
 const JOBS: DemoJob[] = [
   {
     n: 1,
-    submitterEmail: "demo@docbridge.local",
+    submitterEmail: DEMO_EMAIL,
     fileNs: [1, 2, 3],
     daysAgo: 21,
     destinations: [
@@ -1721,7 +1722,7 @@ const JOBS: DemoJob[] = [
   },
   {
     n: 6,
-    submitterEmail: "demo@docbridge.local",
+    submitterEmail: DEMO_EMAIL,
     fileNs: [5],
     daysAgo: 8,
     destinations: [
@@ -1762,7 +1763,7 @@ const JOBS: DemoJob[] = [
   },
   {
     n: 10,
-    submitterEmail: "demo@docbridge.local",
+    submitterEmail: DEMO_EMAIL,
     fileNs: [2, 4],
     daysAgo: 0.5,
     destinations: [
@@ -1771,7 +1772,7 @@ const JOBS: DemoJob[] = [
   },
   {
     n: 11,
-    submitterEmail: "demo@docbridge.local",
+    submitterEmail: DEMO_EMAIL,
     fileNs: [3, 8],
     daysAgo: 0,
     pending: true,
@@ -1809,17 +1810,17 @@ async function main() {
   const passwordHash = await argon2.hash(DEMO_PASSWORD);
   await auth.user.upsert({
     where: { id: DEMO_USER_ID },
-    update: {},
+    update: { email: DEMO_EMAIL, displayName: "Demo", passwordHash },
     create: {
       id: DEMO_USER_ID,
-      email: "demo@docbridge.local",
+      email: DEMO_EMAIL,
       passwordHash,
-      displayName: "Demo Grader",
+      displayName: "Demo",
       isAdmin: false,
     },
   });
   const demoUser = await auth.user.findUniqueOrThrow({
-    where: { email: "demo@docbridge.local" },
+    where: { email: DEMO_EMAIL },
   });
   for (const team of teams) {
     await auth.teamMembership.upsert({
@@ -2183,7 +2184,7 @@ async function main() {
 
   const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:5173";
   console.log(`
---- grader handout ---------------------------------------------------
+--- demo handout -----------------------------------------------------
   URL:       ${webOrigin}
   Accounts:  demo@docbridge.local   (all teams)
              anna@docbridge.local   (Oncology Site A, Central Regulatory)
