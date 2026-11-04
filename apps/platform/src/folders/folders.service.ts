@@ -11,10 +11,18 @@ export class FoldersService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async resolve(folderIds: string[]): Promise<ResolveFoldersResponse> {
+  async resolve(
+    folderIds: string[],
+    teamIds?: string[],
+  ): Promise<ResolveFoldersResponse> {
     const uniqueIds = [...new Set(folderIds)];
     const found = await this.prisma.db.folder.findMany({
-      where: { id: { in: uniqueIds } },
+      where: {
+        id: { in: uniqueIds },
+        ...(teamIds !== undefined && {
+          binder: { teamId: { in: teamIds } },
+        }),
+      },
       include: { binder: { include: { team: true } } },
     });
     const binderIds = [...new Set(found.map((f) => f.binderId))];

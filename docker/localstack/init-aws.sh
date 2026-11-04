@@ -8,6 +8,11 @@ for bucket in docbridge-staging docbridge-platform; do
     awslocal s3 mb "s3://$bucket"
 done
 
+# Match the CDK platform bucket: versioning protects delivered documents
+# from a stray DeleteObject.
+awslocal s3api put-bucket-versioning \
+  --bucket docbridge-platform --versioning-configuration Status=Enabled
+
 # Browser uploads (presigned PUT/UploadPart) hit the staging bucket directly.
 awslocal s3api put-bucket-cors --bucket docbridge-staging --cors-configuration '{
   "CORSRules": [{

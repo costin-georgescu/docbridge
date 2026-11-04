@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import { describe, expect, it, jest } from "@jest/globals";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TreeResponse } from "@docbridge/contracts";
@@ -126,15 +126,21 @@ describe("JobComposer", () => {
         name: "b.pdf: Beta Team / Legal / Contracts",
       }),
     );
-    // header + one chip per row
-    expect(screen.getAllByTitle("Alpha Team / Invoices / 2024")).toHaveLength(
-      3,
-    );
+    // The column header carries the folder path; each row shows a checked cell.
+    expect(screen.getByTitle("Alpha Team / Invoices / 2024")).toBeDefined();
+    for (const name of [
+      "a.pdf: Alpha Team / Invoices / 2024",
+      "b.pdf: Alpha Team / Invoices / 2024",
+    ]) {
+      expect(
+        screen.getByRole("checkbox", { name }).getAttribute("aria-checked"),
+      ).toBe("true");
+    }
 
-    // Remove the Contracts chip from b.pdf, then re-check the cell.
+    // Uncheck b.pdf's Contracts cell, then re-check it.
     await user.click(
-      screen.getByRole("button", {
-        name: "Remove Beta Team / Legal / Contracts from b.pdf",
+      screen.getByRole("checkbox", {
+        name: "b.pdf: Beta Team / Legal / Contracts",
       }),
     );
     expect(
@@ -144,11 +150,6 @@ describe("JobComposer", () => {
         })
         .getAttribute("aria-checked"),
     ).toBe("false");
-    expect(
-      screen.queryByRole("button", {
-        name: "Remove Beta Team / Legal / Contracts from b.pdf",
-      }),
-    ).toBeNull();
     await user.click(
       screen.getByRole("checkbox", {
         name: "b.pdf: Beta Team / Legal / Contracts",
@@ -202,9 +203,7 @@ describe("JobComposer", () => {
       "b.pdf: Beta Team / Legal / Contracts",
     ]) {
       expect(
-        screen
-          .getByRole("checkbox", { name })
-          .getAttribute("aria-checked"),
+        screen.getByRole("checkbox", { name }).getAttribute("aria-checked"),
       ).toBe("true");
     }
     // Toggling the corner off clears the grid.
@@ -258,7 +257,7 @@ describe("JobComposer", () => {
       ],
     });
     expect(
-      screen.getByText("Waiting for 1 file(s) to finish uploading."),
+      screen.getByText(/Waiting for 1 file\(s\) to finish uploading\./),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Submit" })).toHaveProperty(
       "disabled",
@@ -324,7 +323,9 @@ describe("JobComposer", () => {
     await user.click(screen.getByRole("button", { name: "Submit" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Files were already submitted");
-    expect(alert.textContent).toContain("a.pdf");
-    expect(alert.textContent).not.toContain("b.pdf");
+    // The offending files are listed below the alert, resolved to file names.
+    const details = screen.getByRole("list");
+    expect(within(details).getByText("a.pdf")).toBeDefined();
+    expect(within(details).queryByText("b.pdf")).toBeNull();
   });
 });

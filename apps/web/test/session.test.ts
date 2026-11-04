@@ -141,6 +141,45 @@ describe("session", () => {
     expect(s.getState().token).toBeNull();
   });
 
+  it("keeps the session on a transient refresh failure and retries on schedule", async () => {
+    const fetchMock: FetchMock = jest.fn();
+    fetchMock.mockResolvedValueOnce(
+      json({ accessToken: fakeJwt(), expiresIn: 120 }),
+    );
+    const s = createSession({ fetch: fetchMock });
+    await s.login("ada@example.com", "password123");
+
+    fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(paths(fetchMock)).toEqual(["/auth/login", "/auth/refresh"]);
+    const state = s.getState();
+    expect(state.status).toBe("authenticated");
+    expect(state.token).not.toBeNull();
+
+    fetchMock.mockResolvedValueOnce(
+      json({ accessToken: fakeJwt({ name: "Recovered" }), expiresIn: 120 }),
+    );
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(s.getState().claims?.name).toBe("Recovered");
+  });
+
+  it("surfaces the 401 but stays authenticated when refresh fails transiently", async () => {
+    const fetchMock: FetchMock = jest.fn();
+    fetchMock.mockResolvedValueOnce(
+      json({ accessToken: fakeJwt(), expiresIn: 120 }),
+    );
+    const s = createSession({ fetch: fetchMock });
+    await s.login("ada@example.com", "password123");
+
+    fetchMock
+      .mockResolvedValueOnce(error(401))
+      .mockResolvedValueOnce(error(503, "unavailable"));
+    const err = await s.authFetch("/tree").catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(401);
+    expect(s.getState().status).toBe("authenticated");
+  });
+
   it("dedupes concurrent refresh calls into a single request", async () => {
     const fetchMock: FetchMock = jest.fn();
     fetchMock.mockResolvedValueOnce(
@@ -169,5 +208,32 @@ describe("session", () => {
     await s.restore();
     await expect(s.ready()).resolves.toBeUndefined();
     expect(s.getState().status).toBe("anonymous");
+  });
+
+  it("restore retries transient failures and recovers the session", async () => {
+    const fetchMock: FetchMock = jest.fn();
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(
+        json({ accessToken: fakeJwt(), expiresIn: 120 }),
+      );
+    const s = createSession({ fetch: fetchMock });
+    const restore = s.restore();
+    await jest.advanceTimersByTimeAsync(2_000);
+    await restore;
+    expect(s.getState().status).toBe("authenticated");
+  });
+
+  it("restore settles anonymous after exhausting transient retries", async () => {
+    const fetchMock: FetchMock = jest.fn();
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+    const s = createSession({ fetch: fetchMock });
+    const restore = s.restore();
+    await jest.advanceTimersByTimeAsync(10_000);
+    await restore;
+    expect(s.getState().status).toBe("anonymous");
+    expect(paths(fetchMock).filter((p) => p === "/auth/refresh")).toHaveLength(
+      3,
+    );
   });
 });

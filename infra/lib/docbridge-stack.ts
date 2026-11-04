@@ -275,12 +275,20 @@ export class DocBridgeStack extends cdk.Stack {
       bucketKeyEnabled: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
+      // Versioning turns a stray DeleteObject (delivery checksum-failure
+      // cleanup, future bugs) into a recoverable delete marker instead of
+      // losing a delivered document. Noncurrent versions expire on the same
+      // 30-day bound so the cost guard still holds.
+      versioned: true,
       lifecycleRules: [
         {
           abortIncompleteMultipartUploadAfter: cdk.Duration.days(
             Parameters.multipartAbortDays,
           ),
           expiration: cdk.Duration.days(Parameters.platformRetentionDays),
+          noncurrentVersionExpiration: cdk.Duration.days(
+            Parameters.platformRetentionDays,
+          ),
         },
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,

@@ -190,6 +190,18 @@ run("platform e2e", () => {
     expect(res.body.resolved[0].path).toBe("E2E A / Binder / Reports");
   });
 
+  it("reports cross-team folder ids as missing for a user token", async () => {
+    const token = await userToken({ teams: [TEAM_A] });
+    const res = await request(app.getHttpServer())
+      .get(`/folders?ids=${REPORTS_A},${INBOX_B}`)
+      .set(bearer(token))
+      .expect(200);
+    expect(res.body.resolved.map((f: { folderId: string }) => f.folderId)).toEqual(
+      [REPORTS_A],
+    );
+    expect(res.body.missing).toEqual([INBOX_B]);
+  });
+
   it("rejects /folders?ids without a token", async () => {
     const res = await request(app.getHttpServer())
       .get(`/folders?ids=${ARCHIVE_A}`)

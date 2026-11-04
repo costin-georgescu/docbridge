@@ -93,13 +93,15 @@ describe("buckets", () => {
     }
   });
 
-  it("platform bucket expires objects after platformRetentionDays", () => {
+  it("platform bucket is versioned and expires objects after platformRetentionDays", () => {
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketName: Match.stringLikeRegexp("docbridge-platform"),
+      VersioningConfiguration: { Status: "Enabled" },
       LifecycleConfiguration: {
         Rules: Match.arrayWith([
           Match.objectLike({
             ExpirationInDays: 30,
+            NoncurrentVersionExpiration: { NoncurrentDays: 30 },
             AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
           }),
         ]),

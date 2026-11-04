@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [dev, master]
+    branches: [dev]
   workflow_dispatch:
     inputs:
       environment:
@@ -20,7 +20,7 @@ on:
         default: false
 
 env:
-  AWS_REGION: eu-central-1
+  AWS_REGION: us-east-1
   # Real environment values (domain/zone/account) come from this repo
   # variable; empty falls back to the cdk.json placeholders (CI synth only).
   DOCBRIDGE_ENVIRONMENTS: ${{ vars.DOCBRIDGE_ENVIRONMENTS }}

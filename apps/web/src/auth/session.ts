@@ -25,6 +25,17 @@ export interface Session {
   authFetch<T>(path: string, init?: RequestInit): Promise<T>;
 }
 
+// Only a definitive 401/403 from /auth/refresh ends the session. Transient
+// failures (network drop, auth 5xx) keep the session and retry on a short
+// timer: going anonymous aborts in-flight uploads and wipes the batch.
+const REFRESH_RETRY_MS = 30_000;
+const MIN_REFRESH_DELAY_MS = 5_000;
+const RESTORE_ATTEMPTS = 3;
+const RESTORE_RETRY_DELAY_MS = 2_000;
+
+const isAuthRejection = (err: unknown): boolean =>
+  err instanceof ApiError && (err.status === 401 || err.status === 403);
+
 export function createSession(deps: SessionDeps = {}): Session {
   const fetchImpl = deps.fetch ?? globalThis.fetch;
   const setTimeoutImpl = deps.setTimeout ?? globalThis.setTimeout;
@@ -48,16 +59,24 @@ export function createSession(deps: SessionDeps = {}): Session {
     listeners.forEach((listener) => listener());
   };
 
-  const applyTokens = (tokens: TokenResponse) => {
-    const claims = decodeClaims(tokens.accessToken);
+  const clearRefreshTimer = () => {
     if (refreshTimer) {
       clearTimeoutImpl(refreshTimer);
+      refreshTimer = null;
     }
-    refreshTimer = setTimeoutImpl(
-      () => {
-        void refresh().catch(() => {});
-      },
-      Math.max(0, (tokens.expiresIn - 60) * 1000),
+  };
+
+  const scheduleRefresh = (delayMs: number) => {
+    clearRefreshTimer();
+    refreshTimer = setTimeoutImpl(() => {
+      void refresh().catch(() => {});
+    }, delayMs);
+  };
+
+  const applyTokens = (tokens: TokenResponse) => {
+    const claims = decodeClaims(tokens.accessToken);
+    scheduleRefresh(
+      Math.max(MIN_REFRESH_DELAY_MS, (tokens.expiresIn - 60) * 1000),
     );
     setState({
       status: "authenticated",
@@ -76,7 +95,12 @@ export function createSession(deps: SessionDeps = {}): Session {
           });
           applyTokens(tokens);
         } catch (err) {
-          setState({ status: "anonymous", token: null, claims: null });
+          if (isAuthRejection(err)) {
+            clearRefreshTimer();
+            setState({ status: "anonymous", token: null, claims: null });
+          } else if (state.status === "authenticated") {
+            scheduleRefresh(REFRESH_RETRY_MS);
+          }
           throw err;
         } finally {
           inFlightRefresh = null;
@@ -94,13 +118,26 @@ export function createSession(deps: SessionDeps = {}): Session {
     },
     ready: () => readyPromise,
     restore: async () => {
-      try {
-        await refresh();
-      } catch {
-        // anonymous state already applied by refresh()
-      } finally {
-        resolveReady();
+      for (let attempt = 0; attempt < RESTORE_ATTEMPTS; attempt++) {
+        try {
+          await refresh();
+          break;
+        } catch (err) {
+          if (isAuthRejection(err)) break;
+          if (attempt + 1 < RESTORE_ATTEMPTS) {
+            await new Promise<void>((r) =>
+              setTimeoutImpl(r, RESTORE_RETRY_DELAY_MS),
+            );
+          }
+        }
       }
+      if (state.status === "restoring") {
+        // Every attempt failed transiently (e.g. auth down at page load).
+        // Nothing in-memory exists yet, so settling as anonymous only
+        // costs a re-login once the service recovers.
+        setState({ status: "anonymous", token: null, claims: null });
+      }
+      resolveReady();
     },
     login: async (email, password) => {
       const tokens = await request<TokenResponse>("/auth/login", {
@@ -116,10 +153,7 @@ export function createSession(deps: SessionDeps = {}): Session {
       } catch {
         // best effort; the local session is dropped regardless
       }
-      if (refreshTimer) {
-        clearTimeoutImpl(refreshTimer);
-        refreshTimer = null;
-      }
+      clearRefreshTimer();
       setState({ status: "anonymous", token: null, claims: null });
     },
     refresh,
