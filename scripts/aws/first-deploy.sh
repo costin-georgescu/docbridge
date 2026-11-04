@@ -81,6 +81,7 @@ else
   docker buildx create --use --name docbridge-deploy 2>/dev/null || docker buildx use docbridge-deploy
   for app in api auth platform dispatcher worker; do
     docker buildx build -f "$REPO_ROOT/docker/app.Dockerfile" \
+      --platform linux/amd64 \
       --build-arg "APP=$app" \
       -t "$REGISTRY/docbridge/$app:$IMAGE_TAG" \
       -t "$REGISTRY/docbridge/$app:latest" \
