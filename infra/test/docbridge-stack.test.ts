@@ -1,4 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import {
@@ -1126,6 +1129,29 @@ describe("apigw edge mode (edge: apigw, lean, no domain)", () => {
     expect(value).toContain(apiId);
     expect(value).toContain("execute-api.eu-central-1.amazonaws.com");
     expect(value).not.toContain("cloudfront");
+  });
+
+  it("script-src covers every inline <script> in apps/web/index.html", () => {
+    const html = fs.readFileSync(
+      path.resolve(__dirname, "../../apps/web/index.html"),
+      "utf8",
+    );
+    const bodies = [
+      ...html.matchAll(/<script(?![^>]*\bsrc\b)[^>]*>([\s\S]*?)<\/script>/gi),
+    ].map((m) => m[1]);
+    // Exactly 1 inline <script>: a new one needs its sha256 added to
+    // contentSecurityPolicy() in infra/lib/docbridge-stack.ts.
+    expect(bodies.length).toBe(1);
+    const lambdas = Object.values(
+      apigw.findResources("AWS::Lambda::Function"),
+    ) as { Properties: { Code?: { ZipFile?: string } } }[];
+    const code = lambdas.find((l) =>
+      l.Properties.Code?.ZipFile?.includes("GetObjectCommand"),
+    )!.Properties.Code!.ZipFile!;
+    for (const body of bodies) {
+      const hash = `sha256-${crypto.createHash("sha256").update(body).digest("base64")}`;
+      expect(code).toContain(`'${hash}'`);
+    }
   });
 
   it("exports WebUrl and WebBucketName but no DistributionId", () => {

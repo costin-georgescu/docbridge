@@ -92,7 +92,9 @@ function contentSecurityPolicy(
 ): string {
   return [
     "default-src 'self'",
-    "script-src 'self'",
+    // Hash of the theme-init inline <script> in apps/web/index.html (the
+    // only inline script; the infra test recomputes it from that file).
+    "script-src 'self' 'sha256-mi22fBIYKWk1g3v9PvfkepHMLXhPtI60K3t9ruVLdpk='",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self' data:",
