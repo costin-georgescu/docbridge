@@ -90,7 +90,7 @@ else
 fi
 
 echo "== 3/8 deploy cert + main stacks (firstDeploy: services at 0)"
-run pnpm --filter @docbridge/infra exec cdk deploy "DocBridgeCert-$ENV_NAME" "$STACK" \
+run pnpm --filter @docbridge/infra exec cdk deploy "$STACK" \
   --require-approval never -c "imageTag=$IMAGE_TAG" -c "environment=$ENV_NAME" \
   -c firstDeploy=true --outputs-file infra/outputs.json
 

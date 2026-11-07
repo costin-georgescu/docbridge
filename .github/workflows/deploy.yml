@@ -171,8 +171,8 @@ jobs:
           if [ "${{ steps.first_deploy.outputs.enabled }}" = "true" ]; then
             ARGS+=(-c firstDeploy=true)
           fi
-          pnpm exec cdk deploy "DocBridgeCert-${{ steps.env_name.outputs.name }}" \
-            "DocBridge-${{ steps.env_name.outputs.name }}" "${ARGS[@]}"
+          pnpm exec cdk deploy "DocBridge-${{ steps.env_name.outputs.name }}" \
+            "${ARGS[@]}"
 
       # Idempotent: creates the databases/roles on a fresh RDS, no-ops after.
       - name: Bootstrap databases and roles
