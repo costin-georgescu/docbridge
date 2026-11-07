@@ -230,9 +230,10 @@ jobs:
         run: scripts/aws/run-task.sh infra/outputs.json "DocBridge-${{ steps.env_name.outputs.name }}" SeedTaskDef
 
       # Domain mode: the SPA calls api.<domain> for /api, /auth and /tree.
-      # CloudFront-only mode (no domainName): leave VITE_API_BASE_URL
-      # empty — the bundle defaults to same-origin, where the CloudFront
-      # /api/*, /auth/* and /tree behaviors reach the internal ALB.
+      # Same-origin modes (no domainName): leave VITE_API_BASE_URL
+      # empty — the bundle defaults to same-origin, where the edge
+      # (CloudFront behaviors or API Gateway routes) reaches the
+      # internal ALB.
       - name: Resolve api origin for the web build
         id: api_base
         working-directory: infra
@@ -256,6 +257,9 @@ jobs:
         working-directory: infra
         run: |
           BUCKET=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].WebBucketName' outputs.json)
-          DIST=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].DistributionId' outputs.json)
+          DIST=$(jq -r '.["DocBridge-${{ steps.env_name.outputs.name }}"].DistributionId // empty' outputs.json)
           aws s3 sync ../apps/web/dist "s3://$BUCKET" --delete
-          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
+          # apigw edge: no DistributionId, no cache layer to invalidate.
+          if [ -n "$DIST" ]; then
+            aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
+          fi

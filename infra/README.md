@@ -12,6 +12,42 @@ config change, not a rebuild — see Step 0/Step 2.
 
 Estimated durations are rough and flagged — AWS timings vary.
 
+## Review deployment without CloudFront (API Gateway edge)
+
+If the account is denied CloudFront (e.g. a brand-new account under review),
+set `"edge": "apigw"` — optionally with `"lean": true` — on the environment.
+The edge becomes an API Gateway HTTP API: `/api/{proxy+}`, `/auth/{proxy+}`
+and `GET /tree` proxy to the internal ALB over a VPC link, and a Lambda
+serves the SPA from the web bucket on `$default`. `lean` additionally drops
+every service to count 1 and RDS to single-AZ for a short review run.
+
+```json
+{
+  "staging": {
+    "account": "123456789012",
+    "region": "eu-central-1",
+    "alarmEmail": "oncall@example.com",
+    "edge": "apigw",
+    "lean": true
+  }
+}
+```
+
+Notes:
+
+- No custom domain (`domainName`/`hostedZoneId` are rejected together with
+  `"edge": "apigw"`). `WebUrl` is the
+  `https://<id>.execute-api.<region>.amazonaws.com` URL.
+- API Gateway limits apply to the API routes: 30-second timeout and 10 MB
+  payloads. Uploads/downloads are presigned straight to S3, so unaffected.
+- The security headers (CSP, HSTS, X-Frame-Options DENY, …) are set by the
+  SPA Lambda in this mode — they apply to SPA responses only, not to API
+  responses from the ALB.
+
+Everything else below is unchanged: same steps, same scripts. The web
+publish step skips the CloudFront invalidation automatically when the
+stack has no `DistributionId` output.
+
 ## Prerequisites
 
 | Need               | Why                                                                                  |
@@ -128,7 +164,8 @@ worker`), tagged with the git sha (workflow) or `local-<ts>` (dirty tree).
 8. Second `cdk deploy DocBridge-<env>` without `firstDeploy` — services get
    their real counts; then `aws ecs wait services-stable` (10 min cap).
 9. `--seed` (staging only) — runs `SeedTaskDef`: base + demo seed.
-10. Web bundle → `s3 sync` to the web bucket + CloudFront invalidation.
+10. Web bundle → `s3 sync` to the web bucket + CloudFront invalidation
+    (skipped in `apigw` edge mode — no cache layer).
 
 Subsequent deploys are the same workflow without `first_deploy` — see
 "Routine deploys" below.
@@ -149,8 +186,9 @@ jq -r '.["DocBridge-<env>"].WebUrl' infra/outputs.json
 - CF-only: `curl <WebUrl>/api/…` returns API JSON, not `index.html`;
   `curl -i <WebUrl>/auth/service-token` → 404 `route not found` from the
   ALB default action.
-- `curl -I <WebUrl>/` shows the CloudFront security headers (CSP, HSTS,
-  X-Frame-Options DENY).
+- `curl -I <WebUrl>/` shows the security headers (CSP, HSTS,
+  X-Frame-Options DENY) — set by CloudFront, or by the SPA lambda in
+  `apigw` edge mode.
 - Open `<WebUrl>` and log in. The seed (`--seed`, staging)
   creates these accounts — the password is generated per environment and
   stored in Secrets Manager; read it with:
@@ -190,7 +228,8 @@ jq -r '.["DocBridge-<env>"].WebUrl' infra/outputs.json
 - [ ] Lifecycle: `aws s3api get-bucket-lifecycle-configuration --bucket
     docbridge-staging-<env>-<account>` shows the 32-day staged-file expiry + 7-day multipart abort; objects carry `retention=completed`.
 - [ ] Headers: `curl -I <WebUrl>/` shows CSP, HSTS,
-      X-Frame-Options DENY etc. from the CloudFront response policy.
+      X-Frame-Options DENY etc. (CloudFront response policy; the SPA
+      lambda sets the same headers in `apigw` edge mode).
 
 ## Routine deploys
 

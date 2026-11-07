@@ -1,6 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as budgets from "aws-cdk-lib/aws-budgets";
 import * as ce from "aws-cdk-lib/aws-ce";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
@@ -13,6 +14,7 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as route53 from "aws-cdk-lib/aws-route53";
@@ -35,6 +37,13 @@ export interface EnvironmentConfig {
   region: string;
   alarmEmail?: string;
   monthlyBudgetUsd?: number;
+  // Edge front door: "cloudfront" (default) is the distribution modes
+  // described above; "apigw" is an API Gateway HTTP API + VPC link in
+  // front of the same internal ALB plus a Lambda serving the SPA — for
+  // accounts where CloudFront is unavailable. No custom domain support.
+  edge?: "cloudfront" | "apigw";
+  // Shrinks a review environment: all services at count 1, RDS single-AZ.
+  lean?: boolean;
 }
 
 interface ServiceSize {
@@ -67,6 +76,32 @@ const Parameters = {
 // pg-connection-string treats sslmode=require as verify-full, so use
 // no-verify (encrypted, no CA check) everywhere a pg URL is built.
 const DB_SSL = "no-verify";
+
+// TDD 5.5: the SPA talks to the API and straight to S3 via presigned
+// URLs; everything else stays same-origin. In domain mode the API lives
+// at api.<domain>; in the no-domain edge modes it is same-origin behind
+// /api, /auth and /tree. Shared by the CloudFront response-headers
+// policy and the apigw edge's SPA lambda so they cannot drift.
+function contentSecurityPolicy(
+  domain: string | undefined,
+  region: string,
+): string {
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    domain !== undefined
+      ? `connect-src 'self' https://api.${domain} https://*.s3.${region}.amazonaws.com`
+      : `connect-src 'self' https://*.s3.${region}.amazonaws.com`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
 
 const SERVICE_PORTS: Record<string, number> = {
   api: 3000,
@@ -144,15 +179,29 @@ export class DocBridgeStack extends cdk.Stack {
     super(scope, id, props);
     const { envName, config } = props;
     const domain = config.domainName;
-    // In CloudFront-only mode the web origin is the distribution itself,
-    // which is declared further down — resolve lazily so the bucket CORS
-    // and task env below can already reference it.
-    const distributionRef: { current?: cloudfront.Distribution } = {};
+    const apigwEdge = config.edge === "apigw";
+    const lean = config.lean === true;
+    if (apigwEdge && domain !== undefined) {
+      throw new Error(
+        `${envName}: apigw edge does not support a custom domain`,
+      );
+    }
+    // In CloudFront-only mode the web origin is the distribution itself;
+    // in apigw edge mode it is the HTTP API's execute-api host. Both are
+    // declared further down — resolve lazily so the bucket CORS and task
+    // env below can already reference it.
+    const edgeRef: {
+      distribution?: cloudfront.Distribution;
+      httpApi?: apigatewayv2.CfnApi;
+    } = {};
     const webOrigin = cdk.Lazy.string({
-      produce: () =>
-        domain !== undefined
-          ? `https://app.${domain}`
-          : `https://${distributionRef.current!.distributionDomainName}`,
+      produce: () => {
+        if (domain !== undefined) return `https://app.${domain}`;
+        if (apigwEdge) {
+          return `https://${edgeRef.httpApi!.ref}.execute-api.${config.region}.amazonaws.com`;
+        }
+        return `https://${edgeRef.distribution!.distributionDomainName}`;
+      },
     });
 
     // ---------- Network ----------
@@ -348,7 +397,7 @@ export class DocBridgeStack extends cdk.Stack {
       instanceType: new ec2.InstanceType(Parameters.rdsInstanceType),
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      multiAz: true,
+      multiAz: !lean,
       storageEncrypted: true,
       storageEncryptionKey: rdsKey,
       parameters: { "rds.force_ssl": "1" },
@@ -594,7 +643,7 @@ export class DocBridgeStack extends cdk.Stack {
       const service = new ecs.FargateService(this, `Service-${name}`, {
         cluster,
         taskDefinition: taskDef,
-        desiredCount: props.servicesEnabled ? size.count : 0,
+        desiredCount: props.servicesEnabled ? (lean ? 1 : size.count) : 0,
         securityGroups: [servicesSg],
         vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
         cloudMapOptions: { name },
@@ -622,11 +671,11 @@ export class DocBridgeStack extends cdk.Stack {
     // afterwards re-adds these resources cleanly.
     if (props.servicesEnabled) {
       fargateServices.api
-        .autoScaleTaskCount({ minCapacity: 2, maxCapacity: 10 })
+        .autoScaleTaskCount({ minCapacity: lean ? 1 : 2, maxCapacity: 10 })
         .scaleOnCpuUtilization("ApiCpu", { targetUtilizationPercent: 60 });
 
       const workerScaling = fargateServices.worker.autoScaleTaskCount({
-        minCapacity: Parameters.services.worker.count,
+        minCapacity: lean ? 1 : Parameters.services.worker.count,
         maxCapacity: Parameters.workerMaxCount,
       });
       // Target tracking does not support metric math in this CDK version,
@@ -687,125 +736,245 @@ export class DocBridgeStack extends cdk.Stack {
       });
     });
 
-    // ---------- CloudFront ----------
-    const responseHeaders = new cloudfront.ResponseHeadersPolicy(
-      this,
-      "SecurityHeaders",
-      {
-        securityHeadersBehavior: {
-          // TDD 5.5: the SPA talks to the API and straight to S3 via
-          // presigned URLs; everything else stays same-origin. In domain
-          // mode the API lives at api.<domain>; in CloudFront-only mode it
-          // is same-origin behind /api, /auth and /tree on the ALB VPC
-          // origin. Verify in staging before production (5.4).
-          contentSecurityPolicy: {
-            contentSecurityPolicy: [
-              "default-src 'self'",
-              "script-src 'self'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data:",
-              "font-src 'self' data:",
-              domain !== undefined
-                ? `connect-src 'self' https://api.${domain} https://*.s3.${config.region}.amazonaws.com`
-                : `connect-src 'self' https://*.s3.${config.region}.amazonaws.com`,
-              "object-src 'none'",
-              "base-uri 'none'",
-              "form-action 'self'",
-              "frame-ancestors 'none'",
-              "upgrade-insecure-requests",
-            ].join("; "),
-            override: true,
+    // ---------- Edge ----------
+    // Default: a CloudFront distribution (custom domain or the default
+    // *.cloudfront.net name). edge:"apigw" — for accounts where CloudFront
+    // is unavailable — replaces it with an HTTP API + VPC link in front of
+    // the same internal ALB and a Lambda serving the SPA; no custom
+    // domain support, and API responses do not get the security headers
+    // the CloudFront response policy sets (accepted deviation).
+    let distribution: cloudfront.Distribution | undefined;
+    if (!apigwEdge) {
+      const responseHeaders = new cloudfront.ResponseHeadersPolicy(
+        this,
+        "SecurityHeaders",
+        {
+          securityHeadersBehavior: {
+            // Verify in staging before production (5.4).
+            contentSecurityPolicy: {
+              contentSecurityPolicy: contentSecurityPolicy(
+                domain,
+                config.region,
+              ),
+              override: true,
+            },
+            strictTransportSecurity: {
+              accessControlMaxAge: cdk.Duration.days(365),
+              // No subdomains/preload on *.cloudfront.net — we don't own it.
+              includeSubdomains: domain !== undefined,
+              preload: domain !== undefined,
+              override: true,
+            },
+            contentTypeOptions: { override: true },
+            frameOptions: {
+              frameOption: cloudfront.HeadersFrameOption.DENY,
+              override: true,
+            },
+            referrerPolicy: {
+              referrerPolicy:
+                cloudfront.HeadersReferrerPolicy
+                  .STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+              override: true,
+            },
           },
-          strictTransportSecurity: {
-            accessControlMaxAge: cdk.Duration.days(365),
-            // No subdomains/preload on *.cloudfront.net — we don't own it.
-            includeSubdomains: domain !== undefined,
-            preload: domain !== undefined,
-            override: true,
-          },
-          contentTypeOptions: { override: true },
-          frameOptions: {
-            frameOption: cloudfront.HeadersFrameOption.DENY,
-            override: true,
-          },
-          referrerPolicy: {
-            referrerPolicy:
-              cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
-            override: true,
+          customHeadersBehavior: {
+            customHeaders: [
+              {
+                header: "Permissions-Policy",
+                value: "camera=(), microphone=(), geolocation=()",
+                override: true,
+              },
+            ],
           },
         },
-        customHeadersBehavior: {
-          customHeaders: [
+      );
+      // SPA fallback: a viewer-request function rewrites extensionless paths
+      // to /index.html on the S3 behavior only. A distribution-wide
+      // errorResponses would also rewrite API 403/404 JSON in CF-only mode.
+      const spaRewrite = new cloudfront.Function(this, "SpaRewrite", {
+        code: cloudfront.FunctionCode.fromInline(
+          [
+            "function handler(event) {",
+            "  var request = event.request;",
+            "  var last = request.uri.substring(request.uri.lastIndexOf('/') + 1);",
+            "  if (last.indexOf('.') === -1) {",
+            "    request.uri = '/index.html';",
+            "  }",
+            "  return request;",
+            "}",
+          ].join("\n"),
+        ),
+      });
+      // One shared VPC origin for the internal ALB (CF-only mode).
+      const albBehavior: cloudfront.BehaviorOptions = {
+        origin: origins.VpcOrigin.withApplicationLoadBalancer(alb, {
+          protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+          httpPort: 80,
+        }),
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+        // AllViewerExceptHostHeader forwards every viewer header (cookies
+        // included, so the /auth refresh cookie passes through); the
+        // CachingDisabled managed cache policy carries the Authorization
+        // header — it cannot be allow-listed in an origin request policy.
+        originRequestPolicy:
+          cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        responseHeadersPolicy: responseHeaders,
+      };
+      distribution = new cloudfront.Distribution(this, "Distribution", {
+        defaultRootObject: "index.html",
+        ...(domain !== undefined
+          ? { domainNames: [`app.${domain}`], certificate: webCertificate }
+          : {}),
+        defaultBehavior: {
+          origin: origins.S3BucketOrigin.withOriginAccessControl(webBucket),
+          viewerProtocolPolicy:
+            cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          responseHeadersPolicy: responseHeaders,
+          functionAssociations: [
             {
-              header: "Permissions-Policy",
-              value: "camera=(), microphone=(), geolocation=()",
-              override: true,
+              function: spaRewrite,
+              eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
             },
           ],
         },
-      },
-    );
-    // SPA fallback: a viewer-request function rewrites extensionless paths
-    // to /index.html on the S3 behavior only. A distribution-wide
-    // errorResponses would also rewrite API 403/404 JSON in CF-only mode.
-    const spaRewrite = new cloudfront.Function(this, "SpaRewrite", {
-      code: cloudfront.FunctionCode.fromInline(
-        [
-          "function handler(event) {",
-          "  var request = event.request;",
-          "  var last = request.uri.substring(request.uri.lastIndexOf('/') + 1);",
-          "  if (last.indexOf('.') === -1) {",
-          "    request.uri = '/index.html';",
-          "  }",
-          "  return request;",
-          "}",
-        ].join("\n"),
-      ),
-    });
-    // One shared VPC origin for the internal ALB (CF-only mode).
-    const albBehavior: cloudfront.BehaviorOptions = {
-      origin: origins.VpcOrigin.withApplicationLoadBalancer(alb, {
-        protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
-        httpPort: 80,
-      }),
-      allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-      cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-      // AllViewerExceptHostHeader forwards every viewer header (cookies
-      // included, so the /auth refresh cookie passes through); the
-      // CachingDisabled managed cache policy carries the Authorization
-      // header — it cannot be allow-listed in an origin request policy.
-      originRequestPolicy:
-        cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-      responseHeadersPolicy: responseHeaders,
-    };
-    const distribution = new cloudfront.Distribution(this, "Distribution", {
-      defaultRootObject: "index.html",
-      ...(domain !== undefined
-        ? { domainNames: [`app.${domain}`], certificate: webCertificate }
-        : {}),
-      defaultBehavior: {
-        origin: origins.S3BucketOrigin.withOriginAccessControl(webBucket),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        responseHeadersPolicy: responseHeaders,
-        functionAssociations: [
-          {
-            function: spaRewrite,
-            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
-          },
-        ],
-      },
-      // CloudFront-only mode: the API, the platform's /tree and the public
-      // auth paths go to the internal ALB via a VPC origin. The ALB
-      // listener rules still enumerate exactly which paths reach a target.
-      additionalBehaviors:
-        domain !== undefined
-          ? undefined
-          : Object.fromEntries(
-              ["/api/*", "/tree", "/auth/*"].map((path) => [path, albBehavior]),
-            ),
-    });
-    distributionRef.current = distribution;
+        // CloudFront-only mode: the API, the platform's /tree and the public
+        // auth paths go to the internal ALB via a VPC origin. The ALB
+        // listener rules still enumerate exactly which paths reach a target.
+        additionalBehaviors:
+          domain !== undefined
+            ? undefined
+            : Object.fromEntries(
+                ["/api/*", "/tree", "/auth/*"].map((path) => [
+                  path,
+                  albBehavior,
+                ]),
+              ),
+      });
+      edgeRef.distribution = distribution;
+    } else {
+      // API Gateway edge: an HTTP API fronts the same internal ALB through
+      // a VPC link for the API routes; the $default route is a Lambda that
+      // serves the SPA out of the private web bucket. Same-origin, so no
+      // CORS config. API Gateway caps requests at 30s / 10 MB — the app's
+      // uploads and downloads are presigned straight to S3, so unaffected.
+      const vpcLinkSg = new ec2.SecurityGroup(this, "VpcLinkSg", { vpc });
+      const vpcLink = new apigatewayv2.CfnVpcLink(this, "VpcLink", {
+        name: `docbridge-${envName}`,
+        subnetIds: vpc.privateSubnets.map((s) => s.subnetId),
+        securityGroupIds: [vpcLinkSg.securityGroupId],
+      });
+      const httpApi = new apigatewayv2.CfnApi(this, "HttpApi", {
+        name: `docbridge-${envName}`,
+        protocolType: "HTTP",
+      });
+      // The ALB listener rules still enumerate exactly which paths reach
+      // a target; these route keys only mirror them (payload format 1.0
+      // keeps full request/response semantics for the HTTP_PROXY).
+      const albIntegration = new apigatewayv2.CfnIntegration(
+        this,
+        "AlbIntegration",
+        {
+          apiId: httpApi.ref,
+          integrationType: "HTTP_PROXY",
+          integrationMethod: "ANY",
+          integrationUri: listener.listenerArn,
+          connectionType: "VPC_LINK",
+          connectionId: vpcLink.ref,
+          payloadFormatVersion: "1.0",
+        },
+      );
+      for (const [i, routeKey] of [
+        "ANY /api/{proxy+}",
+        "ANY /auth/{proxy+}",
+        "GET /tree",
+      ].entries()) {
+        new apigatewayv2.CfnRoute(this, `AlbRoute${i}`, {
+          apiId: httpApi.ref,
+          routeKey,
+          target: `integrations/${albIntegration.ref}`,
+        });
+      }
+      // Same security headers the CloudFront response policy sets — the
+      // SPA lambda is the only place they can come from in this mode.
+      const securityHeaders = {
+        "Content-Security-Policy": contentSecurityPolicy(domain, config.region),
+        // No includeSubDomains/preload on execute-api hosts — we don't own them.
+        "Strict-Transport-Security": "max-age=31536000",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+      };
+      const spaFunction = new lambda.Function(this, "SpaFunction", {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        architecture: lambda.Architecture.ARM_64,
+        memorySize: 512,
+        timeout: cdk.Duration.seconds(10),
+        logGroup: new logs.LogGroup(this, "LogGroup-spa", {
+          logGroupName: `/docbridge/${envName}/spa`,
+          retention: logs.RetentionDays.ONE_MONTH,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+        handler: "index.handler",
+        environment: { BUCKET: webBucket.bucketName },
+        code: lambda.Code.fromInline(
+          [
+            'const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");',
+            "const s3 = new S3Client({});",
+            "const BUCKET = process.env.BUCKET;",
+            "const TYPES = { html: 'text/html', js: 'text/javascript', mjs: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', ico: 'image/x-icon', webp: 'image/webp', woff: 'font/woff', woff2: 'font/woff2', txt: 'text/plain', map: 'application/json' };",
+            `const SECURITY = ${JSON.stringify(securityHeaders)};`,
+            "const respond = (statusCode, headers, body) => ({ statusCode, headers: { 'Content-Type': 'text/plain', ...SECURITY, ...headers }, ...(body !== undefined ? { body } : {}) });",
+            "exports.handler = async (event) => {",
+            "  const method = (event.requestContext && event.requestContext.http && event.requestContext.http.method || 'GET').toUpperCase();",
+            "  if (method !== 'GET' && method !== 'HEAD') return respond(405, {}, 'method not allowed');",
+            "  const rawPath = event.rawPath || '/';",
+            "  const last = rawPath.substring(rawPath.lastIndexOf('/') + 1);",
+            "  const key = last.indexOf('.') === -1 ? 'index.html' : rawPath.replace(/^\\/+/, '');",
+            "  let obj;",
+            "  try {",
+            "    obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));",
+            "  } catch (e) {",
+            "    if (e.name === 'NoSuchKey' || e.name === 'NotFound' || (e.$metadata && e.$metadata.httpStatusCode === 404)) return respond(404, {}, 'not found');",
+            "    throw e;",
+            "  }",
+            "  const ext = key.substring(key.lastIndexOf('.') + 1).toLowerCase();",
+            "  const cacheControl = key === 'index.html' ? 'no-cache' : key.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'public, max-age=3600';",
+            "  const body = Buffer.from(await obj.Body.transformToByteArray()).toString('base64');",
+            "  return { statusCode: 200, headers: { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': cacheControl, ...SECURITY }, isBase64Encoded: true, body };",
+            "};",
+          ].join("\n"),
+        ),
+      });
+      webBucket.grantRead(spaFunction);
+      const spaIntegration = new apigatewayv2.CfnIntegration(
+        this,
+        "SpaIntegration",
+        {
+          apiId: httpApi.ref,
+          integrationType: "AWS_PROXY",
+          integrationUri: spaFunction.functionArn,
+          payloadFormatVersion: "2.0",
+        },
+      );
+      new apigatewayv2.CfnRoute(this, "SpaDefaultRoute", {
+        apiId: httpApi.ref,
+        routeKey: "$default",
+        target: `integrations/${spaIntegration.ref}`,
+      });
+      new apigatewayv2.CfnStage(this, "DefaultStage", {
+        apiId: httpApi.ref,
+        stageName: "$default",
+        autoDeploy: true,
+      });
+      spaFunction.addPermission("ApigwInvoke", {
+        principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+        sourceArn: `arn:aws:execute-api:${config.region}:${config.account}:${httpApi.ref}/*`,
+      });
+      edgeRef.httpApi = httpApi;
+    }
 
     if (domain !== undefined) {
       new route53.ARecord(this, "ApiARecord", {
@@ -830,7 +999,7 @@ export class DocBridgeStack extends cdk.Stack {
           zone: zone!,
           recordName: `app.${domain}`,
           target: route53.RecordTarget.fromAlias(
-            new r53targets.CloudFrontTarget(distribution),
+            new r53targets.CloudFrontTarget(distribution!),
           ),
         });
       }
@@ -1186,9 +1355,11 @@ export class DocBridgeStack extends cdk.Stack {
     // ---------- Outputs ----------
     new cdk.CfnOutput(this, "ClusterName", { value: cluster.clusterName });
     new cdk.CfnOutput(this, "WebBucketName", { value: webBucket.bucketName });
-    new cdk.CfnOutput(this, "DistributionId", {
-      value: distribution.distributionId,
-    });
+    if (distribution !== undefined) {
+      new cdk.CfnOutput(this, "DistributionId", {
+        value: distribution.distributionId,
+      });
+    }
     new cdk.CfnOutput(this, "WebUrl", { value: webOrigin });
     new cdk.CfnOutput(this, "ServiceNames", {
       value: Object.values(fargateServices)

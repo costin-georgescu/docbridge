@@ -790,11 +790,12 @@ describe("cloudfront-only mode (no domain)", () => {
       cf.findResources("AWS::EC2::SecurityGroup"),
     ).filter(([id]) => id.includes("AlbSg"));
     expect(sgs).toHaveLength(1);
-    const ingress = (
-      sgs[0][1] as {
-        Properties: { SecurityGroupIngress?: Record<string, unknown>[] };
-      }
-    ).Properties.SecurityGroupIngress ?? [];
+    const ingress =
+      (
+        sgs[0][1] as {
+          Properties: { SecurityGroupIngress?: Record<string, unknown>[] };
+        }
+      ).Properties.SecurityGroupIngress ?? [];
     expect(ingress).toHaveLength(1);
     expect(ingress[0].FromPort).toBe(80);
     const rule = JSON.stringify(ingress[0]);
@@ -934,5 +935,135 @@ describe("cloudfront-only mode (no domain)", () => {
 
   it("exports the WebUrl output", () => {
     cf.hasOutput("WebUrl", { Value: Match.anyValue() });
+  });
+});
+
+describe("apigw edge mode (edge: apigw, lean, no domain)", () => {
+  const apigw = synth({
+    cloudfrontOnly: true,
+    config: { account: "123456789012", edge: "apigw", lean: true },
+  }).main;
+
+  it("creates no CloudFront resources", () => {
+    apigw.resourceCountIs("AWS::CloudFront::Distribution", 0);
+    apigw.resourceCountIs("AWS::CloudFront::VpcOrigin", 0);
+    apigw.resourceCountIs("AWS::CloudFront::ResponseHeadersPolicy", 0);
+    apigw.resourceCountIs("AWS::CloudFront::Function", 0);
+  });
+
+  it("has an HTTP API with a $default auto-deploy stage and a VPC link", () => {
+    apigw.hasResourceProperties("AWS::ApiGatewayV2::Api", {
+      ProtocolType: "HTTP",
+    });
+    apigw.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+      StageName: "$default",
+      AutoDeploy: true,
+    });
+    apigw.resourceCountIs("AWS::ApiGatewayV2::VpcLink", 1);
+  });
+
+  it("proxies the API routes to the internal ALB over the VPC link", () => {
+    const listenerId = Object.keys(
+      apigw.findResources("AWS::ElasticLoadBalancingV2::Listener"),
+    )[0];
+    apigw.hasResourceProperties("AWS::ApiGatewayV2::Integration", {
+      IntegrationType: "HTTP_PROXY",
+      IntegrationMethod: "ANY",
+      ConnectionType: "VPC_LINK",
+      PayloadFormatVersion: "1.0",
+      IntegrationUri: { Ref: listenerId },
+    });
+    const routeKeys = Object.values(
+      apigw.findResources("AWS::ApiGatewayV2::Route"),
+    ).map(
+      (r) => (r as { Properties: { RouteKey: string } }).Properties.RouteKey,
+    );
+    expect(routeKeys.sort()).toEqual([
+      "$default",
+      "ANY /api/{proxy+}",
+      "ANY /auth/{proxy+}",
+      "GET /tree",
+    ]);
+  });
+
+  it("serves $default from a Lambda that carries the CSP security headers", () => {
+    apigw.hasResourceProperties("AWS::ApiGatewayV2::Integration", {
+      IntegrationType: "AWS_PROXY",
+      PayloadFormatVersion: "2.0",
+    });
+    const lambdas = Object.values(
+      apigw.findResources("AWS::Lambda::Function"),
+    ) as {
+      Properties: { Runtime: string; Code?: { ZipFile?: string } };
+    }[];
+    const spa = lambdas.find((l) =>
+      l.Properties.Code?.ZipFile?.includes("GetObjectCommand"),
+    );
+    expect(spa).toBeDefined();
+    expect(spa!.Properties.Runtime).toBe("nodejs22.x");
+    const code = spa!.Properties.Code!.ZipFile!;
+    expect(code).toContain(
+      "connect-src 'self' https://*.s3.eu-central-1.amazonaws.com",
+    );
+    expect(code).toContain('"X-Frame-Options":"DENY"');
+    expect(code).toContain('"Strict-Transport-Security":"max-age=31536000"');
+    apigw.hasResourceProperties("AWS::Lambda::Permission", {
+      Action: "lambda:InvokeFunction",
+      Principal: "apigateway.amazonaws.com",
+    });
+  });
+
+  it("runs every service at count 1 and RDS single-AZ (lean)", () => {
+    apigw.allResourcesProperties("AWS::ECS::Service", { DesiredCount: 1 });
+    apigw.hasResourceProperties("AWS::RDS::DBInstance", { MultiAZ: false });
+  });
+
+  it("points staging CORS and WEB_ORIGIN at the execute-api host", () => {
+    const apiId = Object.keys(apigw.findResources("AWS::ApiGatewayV2::Api"))[0];
+    expect(apiId).toBeDefined();
+    const buckets = Object.values(apigw.findResources("AWS::S3::Bucket")) as {
+      Properties: {
+        BucketName: string;
+        CorsConfiguration?: { CorsRules: { AllowedOrigins: unknown[] }[] };
+      };
+    }[];
+    const staging = buckets.find((b) =>
+      b.Properties.BucketName.includes("docbridge-staging"),
+    )!;
+    const origins = JSON.stringify(
+      staging.Properties.CorsConfiguration!.CorsRules[0].AllowedOrigins,
+    );
+    expect(origins).toContain(apiId);
+    expect(origins).toContain("execute-api.eu-central-1.amazonaws.com");
+    expect(origins).not.toContain("cloudfront");
+
+    const defs = Object.values(
+      apigw.findResources("AWS::ECS::TaskDefinition"),
+    ) as {
+      Properties: {
+        ContainerDefinitions: {
+          Name: string;
+          Environment?: { Name: string; Value: unknown }[];
+        }[];
+      };
+    }[];
+    const apiContainer = defs
+      .flatMap((d) => d.Properties.ContainerDefinitions)
+      .find((c) => c.Name === "api")!;
+    const webOrigin = apiContainer.Environment!.find(
+      (e) => e.Name === "WEB_ORIGIN",
+    )!;
+    const value = JSON.stringify(webOrigin.Value);
+    expect(value).toContain(apiId);
+    expect(value).toContain("execute-api.eu-central-1.amazonaws.com");
+    expect(value).not.toContain("cloudfront");
+  });
+
+  it("exports WebUrl and WebBucketName but no DistributionId", () => {
+    apigw.hasOutput("WebUrl", { Value: Match.anyValue() });
+    apigw.hasOutput("WebBucketName", { Value: Match.anyValue() });
+    expect(() =>
+      apigw.hasOutput("DistributionId", { Value: Match.anyValue() }),
+    ).toThrow();
   });
 });

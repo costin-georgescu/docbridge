@@ -132,25 +132,30 @@ if $SKIP_WEB; then
   echo "skipped (--skip-web)"
 elif $DRY_RUN; then
   echo "+ VITE_API_BASE_URL=https://api.<domain> pnpm --filter @docbridge/web build  # domain mode"
-  echo "+ pnpm --filter @docbridge/web build                                        # cloudfront-only mode (same-origin)"
+  echo "+ pnpm --filter @docbridge/web build                                        # same-origin (cloudfront-only / apigw edge)"
   echo "+ aws s3 sync apps/web/dist s3://<WebBucketName> --delete"
-  echo "+ aws cloudfront create-invalidation --distribution-id <DistributionId> --paths /*"
+  echo "+ aws cloudfront create-invalidation --distribution-id <DistributionId> --paths /*  # skipped when the stack has no DistributionId (apigw edge)"
 else
   DOMAIN=$(printf '%s' "${DOCBRIDGE_ENVIRONMENTS:-}" | jq -r --arg e "$ENV_NAME" '.[$e].domainName // empty')
   if [ -z "$DOMAIN" ]; then
     DOMAIN=$(jq -r --arg e "$ENV_NAME" '.context.environments[$e].domainName // empty' "$REPO_ROOT/infra/cdk.json")
   fi
   BUCKET=$(jq -r --arg s "$STACK" '.[$s].WebBucketName' infra/outputs.json)
-  DIST=$(jq -r --arg s "$STACK" '.[$s].DistributionId' infra/outputs.json)
+  DIST=$(jq -r --arg s "$STACK" '.[$s].DistributionId // empty' infra/outputs.json)
   if [ -n "$DOMAIN" ]; then
     VITE_API_BASE_URL="https://api.$DOMAIN" pnpm --filter @docbridge/web build
   else
     # No domain: the API is same-origin behind the /api/*, /auth/* and
-    # /tree CloudFront behaviors — the vite default ("") applies.
+    # /tree edge routes (CloudFront behaviors or API Gateway routes) —
+    # the vite default ("") applies.
     pnpm --filter @docbridge/web build
   fi
   aws s3 sync "$REPO_ROOT/apps/web/dist" "s3://$BUCKET" --delete
-  aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
+  # apigw edge has no DistributionId and no cache layer to invalidate
+  # (the SPA lambda serves index.html with Cache-Control: no-cache).
+  if [ -n "$DIST" ]; then
+    aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
+  fi
 fi
 
 WEB_URL=$(jq -r --arg s "$STACK" '.[$s].WebUrl // empty' infra/outputs.json 2>/dev/null || true)

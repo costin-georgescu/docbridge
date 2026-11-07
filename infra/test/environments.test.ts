@@ -134,4 +134,54 @@ describe("resolveEnvironments", () => {
     };
     expect(resolveEnvironments({ context: envs, env: {} })).toEqual(envs);
   });
+
+  it("accepts edge apigw and a lean flag (no domain)", () => {
+    const envs = {
+      staging: {
+        account: "123456789012",
+        region: "eu-central-1",
+        edge: "apigw",
+        lean: true,
+      },
+    } as const;
+    expect(
+      resolveEnvironments({
+        context: envs as unknown as Record<string, EnvironmentConfig>,
+        env: {},
+      }),
+    ).toEqual(envs);
+  });
+
+  it.each([
+    ["an invalid edge value", { edge: "cdn" }, /staging\.edge/],
+    ["a non-boolean lean", { lean: "yes" }, /staging\.lean/],
+  ])("rejects %s", (_label, bad, pattern) => {
+    const envs = {
+      staging: { account: "123456789012", region: "eu-central-1", ...bad },
+    } as unknown as Record<string, EnvironmentConfig>;
+    expect(() => resolveEnvironments({ context: envs, env: {} })).toThrow(
+      pattern,
+    );
+  });
+
+  it("rejects edge apigw combined with a domain", () => {
+    const envs = {
+      staging: {
+        account: "123456789012",
+        region: "eu-central-1",
+        domainName: "x.example.com",
+        hostedZoneId: "ZABC123",
+        edge: "apigw",
+      },
+    } as unknown as Record<string, EnvironmentConfig>;
+    expect(() => resolveEnvironments({ context: envs, env: {} })).toThrow(
+      /staging\.edge.*apigw edge does not support a custom domain/,
+    );
+  });
+
+  it("leaves edge and lean unset by default", () => {
+    const out = resolve({});
+    expect(out.staging.edge).toBeUndefined();
+    expect(out.staging.lean).toBeUndefined();
+  });
 });

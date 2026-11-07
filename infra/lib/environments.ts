@@ -58,6 +58,17 @@ function validate(name: string, raw: unknown): EnvironmentConfig {
   ) {
     fail(name, "alarmEmail", "must be an email address (single @)");
   }
+  const edge = c.edge;
+  if (edge !== undefined && edge !== "cloudfront" && edge !== "apigw") {
+    fail(name, "edge", 'must be "cloudfront" or "apigw"');
+  }
+  if (edge === "apigw" && hasDomain) {
+    fail(name, "edge", "apigw edge does not support a custom domain");
+  }
+  const lean = c.lean;
+  if (lean !== undefined && typeof lean !== "boolean") {
+    fail(name, "lean", "must be a boolean");
+  }
   const monthlyBudgetUsd = c.monthlyBudgetUsd;
   if (
     monthlyBudgetUsd !== undefined &&
@@ -74,6 +85,8 @@ function validate(name: string, raw: unknown): EnvironmentConfig {
     region: c.region as string,
     alarmEmail: alarmEmail as string | undefined,
     monthlyBudgetUsd: monthlyBudgetUsd as number | undefined,
+    edge: edge as EnvironmentConfig["edge"],
+    lean: lean as boolean | undefined,
   };
 }
 
