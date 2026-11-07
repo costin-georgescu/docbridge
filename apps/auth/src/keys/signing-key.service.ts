@@ -27,7 +27,9 @@ export class SigningKeyService implements OnModuleInit {
         kid: string;
         privateKey: string;
       };
-      const key = await importPKCS8(parsed.privateKey, "RS256");
+      const key = await importPKCS8(parsed.privateKey, "RS256", {
+        extractable: true,
+      });
       this.privateKey = key;
       this.publicJwk = await this.toPublicJwk(key, parsed.kid);
       return;

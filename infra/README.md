@@ -50,14 +50,14 @@ stack has no `DistributionId` output.
 
 ## Prerequisites
 
-| Need               | Why                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------ |
-| AWS account        | Create one; set a billing alarm before anything else.                                |
-| Admin credentials  | IAM Identity Center (SSO) user or IAM admin user; `aws sso login` / `aws configure`. |
+| Need               | Why                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| AWS account        | Create one; set a billing alarm before anything else.                                 |
+| Admin credentials  | IAM Identity Center (SSO) user or IAM admin user; `aws sso login` / `aws configure`.  |
 | Domain you control | Optional — only for domain mode; you must be able to set NS records at the registrar. |
-| Docker             | Building the service images locally (`first-deploy.sh`).                             |
-| Node 24 + pnpm     | `corepack enable`; the repo's `pnpm install` must work.                              |
-| AWS CLI v2, jq     | Used by all helper scripts.                                                          |
+| Docker             | Building the service images locally (`first-deploy.sh`).                              |
+| Node 24 + pnpm     | `corepack enable`; the repo's `pnpm install` must work.                               |
+| AWS CLI v2, jq     | Used by all helper scripts.                                                           |
 
 ## Step 0 — DNS (optional; only for domain mode)
 
@@ -128,6 +128,9 @@ optional —
 subscribes that address to the alarm topic AND enables the spend alerts
 below; confirm the SNS email). `monthlyBudgetUsd` is optional too and
 overrides the default $100 monthly budget used by the spend alerts.
+`"spendAlerts": false` skips the Budgets + Cost Anomaly Detection resources
+entirely — needed in regions where CloudFormation doesn't support them
+(e.g. eu-north-1); create a budget manually in the Billing console instead.
 You may list only the environments you care about.
 
 Or, for local-only deploys, export the same JSON:
@@ -203,6 +206,7 @@ jq -r '.["DocBridge-<env>"].WebUrl' infra/outputs.json
   `/docbridge/<env>/seed` log group):
   `admin@docbridge.local` (admin), `demo@docbridge.local`,
   `anna@docbridge.local`, `ben@docbridge.local`.
+
 - Confirm the SNS subscription email (click the confirm link) if you set
   `alarmEmail`.
 - CloudWatch log groups live at `/docbridge/<env>/<service>` and
@@ -226,7 +230,7 @@ jq -r '.["DocBridge-<env>"].WebUrl' infra/outputs.json
       allows `app.<domain>`); in CF-only mode they are same-origin. Either
       way, check Set-Cookie is Secure/SameSite=Strict.
 - [ ] Lifecycle: `aws s3api get-bucket-lifecycle-configuration --bucket
-    docbridge-staging-<env>-<account>` shows the 32-day staged-file expiry + 7-day multipart abort; objects carry `retention=completed`.
+  docbridge-staging-<env>-<account>` shows the 32-day staged-file expiry + 7-day multipart abort; objects carry `retention=completed`.
 - [ ] Headers: `curl -I <WebUrl>/` shows CSP, HSTS,
       X-Frame-Options DENY etc. (CloudFront response policy; the SPA
       lambda sets the same headers in `apigw` edge mode).

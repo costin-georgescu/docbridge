@@ -38,7 +38,7 @@ NET="awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp
 # SeedTaskDef -> seed).
 ENV_NAME=${STACK#DocBridge-}
 case $KEY in
-  MigrateTaskDef-*) LOG_SUFFIX="migrate-${KEY#MigrateTaskDef-}" ;;
+  MigrateTaskDef*) LOG_SUFFIX="migrate-${KEY#MigrateTaskDef}"; LOG_SUFFIX=${LOG_SUFFIX/migrate--/migrate-} ;;
   BootstrapTaskDef) LOG_SUFFIX="db-bootstrap" ;;
   SeedTaskDef) LOG_SUFFIX="seed" ;;
   *) LOG_SUFFIX=$(echo "$KEY" | tr '[:upper:]' '[:lower:]') ;;

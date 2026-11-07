@@ -71,8 +71,10 @@ function aws(awsArgs: string[], input?: string): AwsResult {
   };
 }
 
-// An existing SecretString means the secret is populated; the CDK-created
-// secret has no AWSCURRENT version yet, so get-secret-value fails.
+// The secret counts as populated only when SecretString parses as our
+// signing-key document {"kid","privateKey"} — the CDK-created secret gets
+// a random default password value that must be replaced on first deploy.
+// A CDK secret with no AWSCURRENT version fails get-secret-value entirely.
 export function secretIsPopulated(result: AwsResult): boolean {
   if (!result.ok) {
     if (result.stderr.includes("ResourceNotFoundException")) return false;
@@ -81,9 +83,25 @@ export function secretIsPopulated(result: AwsResult): boolean {
     );
   }
   const parsed = JSON.parse(result.stdout) as { SecretString?: string };
-  return (
-    typeof parsed.SecretString === "string" && parsed.SecretString.length > 0
-  );
+  if (typeof parsed.SecretString !== "string" || parsed.SecretString === "") {
+    return false;
+  }
+  try {
+    const doc = JSON.parse(parsed.SecretString) as {
+      kid?: unknown;
+      privateKey?: unknown;
+    };
+    return (
+      typeof doc === "object" &&
+      doc !== null &&
+      typeof doc.kid === "string" &&
+      doc.kid.length > 0 &&
+      typeof doc.privateKey === "string" &&
+      doc.privateKey.length > 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 // What to do when the secret already holds a value.

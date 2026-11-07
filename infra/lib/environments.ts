@@ -69,6 +69,10 @@ function validate(name: string, raw: unknown): EnvironmentConfig {
   if (lean !== undefined && typeof lean !== "boolean") {
     fail(name, "lean", "must be a boolean");
   }
+  const spendAlerts = c.spendAlerts;
+  if (spendAlerts !== undefined && typeof spendAlerts !== "boolean") {
+    fail(name, "spendAlerts", "must be a boolean");
+  }
   const monthlyBudgetUsd = c.monthlyBudgetUsd;
   if (
     monthlyBudgetUsd !== undefined &&
@@ -87,6 +91,7 @@ function validate(name: string, raw: unknown): EnvironmentConfig {
     monthlyBudgetUsd: monthlyBudgetUsd as number | undefined,
     edge: edge as EnvironmentConfig["edge"],
     lean: lean as boolean | undefined,
+    spendAlerts: spendAlerts as boolean | undefined,
   };
 }
 

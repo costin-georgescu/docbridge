@@ -155,6 +155,11 @@ describe("resolveEnvironments", () => {
   it.each([
     ["an invalid edge value", { edge: "cdn" }, /staging\.edge/],
     ["a non-boolean lean", { lean: "yes" }, /staging\.lean/],
+    [
+      "a non-boolean spendAlerts",
+      { spendAlerts: "no" },
+      /staging\.spendAlerts/,
+    ],
   ])("rejects %s", (_label, bad, pattern) => {
     const envs = {
       staging: { account: "123456789012", region: "eu-central-1", ...bad },
@@ -183,5 +188,13 @@ describe("resolveEnvironments", () => {
     const out = resolve({});
     expect(out.staging.edge).toBeUndefined();
     expect(out.staging.lean).toBeUndefined();
+    expect(out.staging.spendAlerts).toBeUndefined();
+  });
+
+  it.each([true, false])("accepts spendAlerts %s", (spendAlerts) => {
+    const envs = {
+      staging: { account: "123456789012", region: "eu-central-1", spendAlerts },
+    };
+    expect(resolveEnvironments({ context: envs, env: {} })).toEqual(envs);
   });
 });

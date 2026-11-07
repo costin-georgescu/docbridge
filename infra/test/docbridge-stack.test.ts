@@ -109,6 +109,67 @@ describe("buckets", () => {
     });
   });
 
+  it("staging bucket splits the tag-filtered expiry from the multipart abort", () => {
+    // S3 rejects AbortIncompleteMultipartUpload combined with a tag filter.
+    const staging = Object.values(
+      template.findResources("AWS::S3::Bucket"),
+    ).find(
+      (b) =>
+        (b as { Properties: { BucketName: string } }).Properties.BucketName ===
+        "docbridge-staging-test-111111111111",
+    ) as {
+      Properties: {
+        LifecycleConfiguration: {
+          Rules: {
+            Id?: string;
+            ExpirationInDays?: number;
+            AbortIncompleteMultipartUpload?: unknown;
+            TagFilters?: unknown;
+          }[];
+        };
+      };
+    };
+    const rules = staging.Properties.LifecycleConfiguration.Rules;
+    expect(rules).toHaveLength(2);
+    expect(rules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ExpirationInDays: 32,
+          TagFilters: [{ Key: "retention", Value: "completed" }],
+        }),
+        expect.objectContaining({
+          AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+        }),
+      ]),
+    );
+  });
+
+  it("no bucket lifecycle rule combines a tag filter with the multipart abort", () => {
+    const buckets = Object.values(
+      template.findResources("AWS::S3::Bucket"),
+    ) as {
+      Properties: {
+        LifecycleConfiguration?: {
+          Rules: {
+            AbortIncompleteMultipartUpload?: unknown;
+            TagFilters?: unknown;
+            Filter?: { And?: { Tags?: unknown } };
+          }[];
+        };
+      };
+    }[];
+    for (const bucket of buckets) {
+      for (const rule of bucket.Properties.LifecycleConfiguration?.Rules ??
+        []) {
+        const hasTags =
+          rule.TagFilters !== undefined || rule.Filter?.And?.Tags !== undefined;
+        expect(
+          hasTags && rule.AbortIncompleteMultipartUpload !== undefined,
+        ).toBe(false);
+      }
+    }
+  });
+
   it("staging and platform buckets use SSE-KMS", () => {
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketName: Match.stringLikeRegexp("docbridge-staging"),
@@ -655,6 +716,14 @@ describe("spend alerts", () => {
         MatchOptions: ["GREATER_THAN_OR_EQUAL"],
       },
     });
+  });
+
+  it("creates no Budgets/CE resources with spendAlerts:false but keeps the alarm subscription", () => {
+    const t = withEmail({ spendAlerts: false });
+    t.resourceCountIs("AWS::Budgets::Budget", 0);
+    t.resourceCountIs("AWS::CE::AnomalyMonitor", 0);
+    t.resourceCountIs("AWS::CE::AnomalySubscription", 0);
+    t.resourceCountIs("AWS::SNS::Subscription", 1);
   });
 
   it("creates no spend alerts without alarmEmail", () => {

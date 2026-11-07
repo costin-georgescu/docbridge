@@ -51,6 +51,13 @@ STACK="DocBridge-$ENV_NAME"
 
 "$REPO_ROOT/scripts/aws/check-env.sh" "$ENV_NAME"
 
+# Every aws call below (run-task, ecs wait, secrets, s3 sync) must target the
+# environment's region, not whatever the CLI profile defaults to.
+CFG_REGION=$(printf '%s' "${DOCBRIDGE_ENVIRONMENTS:-}" | jq -r --arg e "$ENV_NAME" '.[$e].region // empty')
+if [ -n "$CFG_REGION" ]; then
+  export AWS_REGION="$CFG_REGION" AWS_DEFAULT_REGION="$CFG_REGION"
+fi
+
 # Same tag strategy as the workflow: git sha; local builds get local-<ts>
 # when the tree is dirty so a dirty run can't impersonate a sha.
 if $DRY_RUN; then
@@ -92,14 +99,14 @@ fi
 echo "== 3/8 deploy cert + main stacks (firstDeploy: services at 0)"
 run pnpm --filter @docbridge/infra exec cdk deploy "$STACK" \
   --require-approval never -c "imageTag=$IMAGE_TAG" -c "environment=$ENV_NAME" \
-  -c firstDeploy=true --outputs-file infra/outputs.json
+  -c firstDeploy=true --outputs-file "$REPO_ROOT/infra/outputs.json"
 
 echo "== 4/8 bootstrap databases and roles"
 run "$REPO_ROOT/scripts/aws/run-task.sh" infra/outputs.json "$STACK" BootstrapTaskDef
 
 echo "== 5/8 run migrations"
 for db in auth docbridge platform; do
-  run "$REPO_ROOT/scripts/aws/run-task.sh" infra/outputs.json "$STACK" "MigrateTaskDef-$db"
+  run "$REPO_ROOT/scripts/aws/run-task.sh" infra/outputs.json "$STACK" "MigrateTaskDef$db"
 done
 
 echo "== 6/8 provision JWT signing key (skips if populated)"
@@ -108,7 +115,7 @@ run pnpm aws:jwt-key "docbridge/$ENV_NAME/auth/jwt-signing-key" --skip-if-popula
 echo "== 7/8 enable services + wait for stability"
 run pnpm --filter @docbridge/infra exec cdk deploy "$STACK" \
   --require-approval never -c "imageTag=$IMAGE_TAG" -c "environment=$ENV_NAME" \
-  --outputs-file infra/outputs.json
+  --outputs-file "$REPO_ROOT/infra/outputs.json"
 if $DRY_RUN; then
   echo "+ timeout 600 aws ecs wait services-stable --cluster <cluster> --services <names>"
 else

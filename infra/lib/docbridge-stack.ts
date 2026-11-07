@@ -44,6 +44,10 @@ export interface EnvironmentConfig {
   edge?: "cloudfront" | "apigw";
   // Shrinks a review environment: all services at count 1, RDS single-AZ.
   lean?: boolean;
+  // False skips the AWS::Budgets::Budget + AWS::CE::* spend alerts — for
+  // regions where CloudFormation doesn't support those resource types
+  // (e.g. eu-north-1). Unset/true keeps today's behavior.
+  spendAlerts?: boolean;
 }
 
 interface ServiceSize {
@@ -296,12 +300,18 @@ export class DocBridgeStack extends cdk.Stack {
         },
       ],
       lifecycleRules: [
+        // S3 forbids a tag filter together with the abort-multipart
+        // action, so the two live in separate rules.
         {
+          id: "expire-completed",
+          expiration: cdk.Duration.days(Parameters.stagedRetentionDays),
+          tagFilters: { retention: "completed" },
+        },
+        {
+          id: "abort-incomplete-multipart",
           abortIncompleteMultipartUploadAfter: cdk.Duration.days(
             Parameters.multipartAbortDays,
           ),
-          expiration: cdk.Duration.days(Parameters.stagedRetentionDays),
-          tagFilters: { retention: "completed" },
         },
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
@@ -1242,62 +1252,66 @@ export class DocBridgeStack extends cdk.Stack {
 
       // ---------- Spend alerts ----------
       // Budgets only notify — they cannot cap spend. Created only when an
-      // alarm email exists because a budget needs a subscriber.
+      // alarm email exists because a budget needs a subscriber, and not at
+      // all in regions where CloudFormation lacks the Budgets/CE resource
+      // types (spendAlerts: false, e.g. eu-north-1).
       const email = config.alarmEmail;
-      const budgetNotifications = [50, 80, 100].map((threshold) => ({
-        notification: {
-          notificationType: "ACTUAL",
-          comparisonOperator: "GREATER_THAN",
-          threshold,
-          thresholdType: "PERCENTAGE",
-        },
-        subscribers: [{ subscriptionType: "EMAIL", address: email }],
-      }));
-      budgetNotifications.push({
-        notification: {
-          notificationType: "FORECASTED",
-          comparisonOperator: "GREATER_THAN",
-          threshold: 100,
-          thresholdType: "PERCENTAGE",
-        },
-        subscribers: [{ subscriptionType: "EMAIL", address: email }],
-      });
-      new budgets.CfnBudget(this, "MonthlyBudget", {
-        budget: {
-          budgetType: "COST",
-          timeUnit: "MONTHLY",
-          // Track gross spend: the default costTypes include credits, which
-          // would show ~$0 while the free-credit balance burns down.
-          costTypes: { includeCredit: false, includeRefund: false },
-          budgetLimit: {
-            amount:
-              config.monthlyBudgetUsd ?? Parameters.defaultMonthlyBudgetUsd,
-            unit: "USD",
+      if (config.spendAlerts !== false) {
+        const budgetNotifications = [50, 80, 100].map((threshold) => ({
+          notification: {
+            notificationType: "ACTUAL",
+            comparisonOperator: "GREATER_THAN",
+            threshold,
+            thresholdType: "PERCENTAGE",
           },
-        },
-        notificationsWithSubscribers: budgetNotifications,
-      });
+          subscribers: [{ subscriptionType: "EMAIL", address: email }],
+        }));
+        budgetNotifications.push({
+          notification: {
+            notificationType: "FORECASTED",
+            comparisonOperator: "GREATER_THAN",
+            threshold: 100,
+            thresholdType: "PERCENTAGE",
+          },
+          subscribers: [{ subscriptionType: "EMAIL", address: email }],
+        });
+        new budgets.CfnBudget(this, "MonthlyBudget", {
+          budget: {
+            budgetType: "COST",
+            timeUnit: "MONTHLY",
+            // Track gross spend: the default costTypes include credits, which
+            // would show ~$0 while the free-credit balance burns down.
+            costTypes: { includeCredit: false, includeRefund: false },
+            budgetLimit: {
+              amount:
+                config.monthlyBudgetUsd ?? Parameters.defaultMonthlyBudgetUsd,
+              unit: "USD",
+            },
+          },
+          notificationsWithSubscribers: budgetNotifications,
+        });
 
-      // Cost Anomaly Detection: catch spend spikes the monthly budget
-      // cadence would notice too late.
-      const anomalyMonitor = new ce.CfnAnomalyMonitor(this, "SpendMonitor", {
-        monitorName: `docbridge-${envName}-services`,
-        monitorType: "DIMENSIONAL",
-        monitorDimension: "SERVICE",
-      });
-      new ce.CfnAnomalySubscription(this, "SpendAnomalyAlerts", {
-        subscriptionName: `docbridge-${envName}-spend-anomalies`,
-        frequency: "DAILY",
-        monitorArnList: [anomalyMonitor.attrMonitorArn],
-        subscribers: [{ type: "EMAIL", address: email }],
-        thresholdExpression: JSON.stringify({
-          Dimensions: {
-            Key: "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
-            Values: ["5"],
-            MatchOptions: ["GREATER_THAN_OR_EQUAL"],
-          },
-        }),
-      });
+        // Cost Anomaly Detection: catch spend spikes the monthly budget
+        // cadence would notice too late.
+        const anomalyMonitor = new ce.CfnAnomalyMonitor(this, "SpendMonitor", {
+          monitorName: `docbridge-${envName}-services`,
+          monitorType: "DIMENSIONAL",
+          monitorDimension: "SERVICE",
+        });
+        new ce.CfnAnomalySubscription(this, "SpendAnomalyAlerts", {
+          subscriptionName: `docbridge-${envName}-spend-anomalies`,
+          frequency: "DAILY",
+          monitorArnList: [anomalyMonitor.attrMonitorArn],
+          subscribers: [{ type: "EMAIL", address: email }],
+          thresholdExpression: JSON.stringify({
+            Dimensions: {
+              Key: "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+              Values: ["5"],
+              MatchOptions: ["GREATER_THAN_OR_EQUAL"],
+            },
+          }),
+        });
+      }
     }
     const alarmAction = new cw_actions.SnsAction(alarmTopic);
     const addAlarm = (id: string, alarm: cloudwatch.Alarm) => {

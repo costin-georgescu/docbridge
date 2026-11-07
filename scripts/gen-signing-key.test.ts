@@ -86,14 +86,38 @@ describe("secretIsPopulated", () => {
   const ok = (stdout: string) => ({ ok: true, stdout, stderr: "" });
   const fail = (stderr: string) => ({ ok: false, stdout: "", stderr });
 
-  it("is populated when SecretString is non-empty", () => {
+  it("is populated when SecretString is a real signing-key document", () => {
+    const key = JSON.stringify({ kid: "k-20260101-abcdef", privateKey: "pem" });
+    expect(secretIsPopulated(ok(JSON.stringify({ SecretString: key })))).toBe(
+      true,
+    );
+  });
+
+  it("is not populated by a random non-JSON default value", () => {
+    // The CDK Secret defaults to a generated password SecretString.
     expect(
-      secretIsPopulated(ok(JSON.stringify({ SecretString: '{"kid":"x"}' }))),
-    ).toBe(true);
+      secretIsPopulated(ok(JSON.stringify({ SecretString: "a1b2c3d4..." }))),
+    ).toBe(false);
+  });
+
+  it("is not populated by JSON missing the key fields", () => {
+    for (const doc of [
+      '{"kid":"x"}',
+      '{"privateKey":"p"}',
+      '"just-a-string"',
+      "5",
+    ]) {
+      expect(secretIsPopulated(ok(JSON.stringify({ SecretString: doc })))).toBe(
+        false,
+      );
+    }
   });
 
   it("is empty when the secret has no SecretString or is missing", () => {
     expect(secretIsPopulated(ok(JSON.stringify({})))).toBe(false);
+    expect(secretIsPopulated(ok(JSON.stringify({ SecretString: "" })))).toBe(
+      false,
+    );
     expect(
       secretIsPopulated(fail("An error occurred (ResourceNotFoundException)")),
     ).toBe(false);

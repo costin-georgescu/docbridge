@@ -183,7 +183,7 @@ jobs:
         run: |
           for db in auth docbridge platform; do
             scripts/aws/run-task.sh infra/outputs.json \
-              "DocBridge-${{ steps.env_name.outputs.name }}" "MigrateTaskDef-$db"
+              "DocBridge-${{ steps.env_name.outputs.name }}" "MigrateTaskDef$db"
           done
 
       # Generates the signing key only while the secret is empty; never
