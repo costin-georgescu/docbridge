@@ -11,3 +11,4 @@ cdk.context.json
 tests/perf/manifest.json
 tests/perf/chunks.txt
 demo-files/
+infra/outputs.json

@@ -21,8 +21,8 @@ DocBridge turns a repetitive clinical-trial workflow into one action: pick files
 ## Status
 
 - Stage 1 — Blueprint: done
-- Stage 2 — Technical design: drafted, awaiting review
-- Stage 3 — Implementation & hosting: next
+- Stage 2 — Technical design: done
+- Stage 3 — Implementation & hosting: deployed
 
 ## Architecture overview
 
