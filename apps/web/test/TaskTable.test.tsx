@@ -95,7 +95,7 @@ describe("TaskTable", () => {
     ).toBeDefined();
   });
 
-  it("filters tasks by status", async () => {
+  it("filters tasks to a single status", async () => {
     const user = userEvent.setup();
     render(<TaskTable files={files} tasks={tasks} />);
 
@@ -103,17 +103,53 @@ describe("TaskTable", () => {
       screen.getByRole("button", { name: "Completed (1)" }),
     );
     expect(
+      screen.getByRole("cell", { name: "Alpha / Invoices / 2024" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("cell", { name: "Beta / Legal / Contracts" }),
+    ).toBeNull();
+    expect(screen.queryByRole("cell", { name: "Gamma / Archive" })).toBeNull();
+
+    // Selecting another status swaps the filter — the rest stay deselected.
+    await user.click(screen.getByRole("button", { name: "Failed (1)" }));
+    expect(
       screen.queryByRole("cell", { name: "Alpha / Invoices / 2024" }),
     ).toBeNull();
     expect(
-      screen.getByRole("cell", { name: "Beta / Legal / Contracts" }),
+      screen.getByRole("cell", { name: "Gamma / Archive" }),
     ).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "Pending (1)" }));
-    await user.click(screen.getByRole("button", { name: "Failed (1)" }));
-    await user.click(screen.getByRole("button", { name: "In progress (0)" }));
+    // A filter with no matching tasks shows the empty-filter message.
+    await user.click(
+      screen.getByRole("button", { name: "In progress (0)" }),
+    );
     expect(
       screen.getByText("No tasks match the selected filters."),
+    ).toBeDefined();
+
+    // All restores the full list.
+    await user.click(screen.getByRole("button", { name: "All (3)" }));
+    expect(
+      screen.getByRole("cell", { name: "Alpha / Invoices / 2024" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("cell", { name: "Beta / Legal / Contracts" }),
+    ).toBeDefined();
+    expect(screen.getByRole("cell", { name: "Gamma / Archive" })).toBeDefined();
+  });
+
+  it("clicking the active filter again restores the full list", async () => {
+    const user = userEvent.setup();
+    render(<TaskTable files={files} tasks={tasks} />);
+
+    const filter = screen.getByRole("button", { name: "Failed (1)" });
+    await user.click(filter);
+    expect(
+      screen.queryByRole("cell", { name: "Alpha / Invoices / 2024" }),
+    ).toBeNull();
+    await user.click(filter);
+    expect(
+      screen.getByRole("cell", { name: "Alpha / Invoices / 2024" }),
     ).toBeDefined();
   });
 

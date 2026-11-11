@@ -69,7 +69,7 @@ export function TaskTable({
   files: JobFileResponse[];
   tasks: JobTaskResponse[];
 }) {
-  const [hidden, setHidden] = useState<ReadonlySet<TaskStatus>>(new Set());
+  const [selected, setSelected] = useState<TaskStatus | null>(null);
   const counts = useMemo(() => {
     const result: Record<TaskStatus, number> = {
       pending: 0,
@@ -85,7 +85,7 @@ export function TaskTable({
   const groups = useMemo(() => {
     const byFile = new Map<string, JobTaskResponse[]>();
     for (const task of tasks) {
-      if (hidden.has(task.status)) {
+      if (selected !== null && task.status !== selected) {
         continue;
       }
       const list = byFile.get(task.fileId) ?? [];
@@ -106,31 +106,34 @@ export function TaskTable({
       });
     }
     return mapped;
-  }, [files, tasks, hidden]);
-
-  const toggle = (status: TaskStatus) =>
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) {
-        next.delete(status);
-      } else {
-        next.add(status);
-      }
-      return next;
-    });
+  }, [files, tasks, selected]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted">Filter tasks</span>
+        <button
+          type="button"
+          aria-pressed={selected === null}
+          onClick={() => setSelected(null)}
+          className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+            selected === null
+              ? "border-accent bg-accent-soft text-accent"
+              : "border-line bg-surface text-muted"
+          }`}
+        >
+          All ({tasks.length})
+        </button>
         {TASK_FILTERS.map(({ status, label }) => {
-          const active = !hidden.has(status);
+          const active = selected === status;
           return (
             <button
               key={status}
               type="button"
               aria-pressed={active}
-              onClick={() => toggle(status)}
+              onClick={() =>
+                setSelected((prev) => (prev === status ? null : status))
+              }
               className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
                 active
                   ? "border-accent bg-accent-soft text-accent"
