@@ -35,7 +35,6 @@ export function JobComposer({
   const [state, dispatch] = useReducer(mappingReducer, initialMappingState);
   const [error, setError] = useState<ApiError | null>(null);
   const [genericError, setGenericError] = useState(false);
-  const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const folderIndex = useMemo(() => buildFolderIndex(tree), [tree]);
   const summary = summarize(state, items);
@@ -48,7 +47,6 @@ export function JobComposer({
     onSuccess: (response, request) => {
       setError(null);
       setGenericError(false);
-      setSubmittedJobId(response.jobId);
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
       dispatch({ type: "reset" });
       onSubmitted(
@@ -60,7 +58,6 @@ export function JobComposer({
       );
     },
     onError: (err) => {
-      setSubmittedJobId(null);
       if (err instanceof ApiError) {
         setError(err);
       } else {
@@ -80,15 +77,11 @@ export function JobComposer({
       ? error.message
       : genericError
         ? "Submission failed. Try again."
-        : submittedJobId !== null
-          ? `Job submitted. ${submittedJobId}`
-          : summary.blockers.join(" ");
+        : summary.blockers.join(" ");
   const statusClass =
     error !== null || genericError
       ? "text-rose-600 dark:text-rose-300"
-      : submittedJobId !== null
-        ? "text-emerald-600 dark:text-emerald-300"
-        : "text-muted";
+      : "text-muted";
 
   return (
     <Card
@@ -179,13 +172,7 @@ export function JobComposer({
           </span>
         </p>
         <p
-          role={
-            error !== null || genericError
-              ? "alert"
-              : submittedJobId !== null
-                ? "status"
-                : undefined
-          }
+          role={error !== null || genericError ? "alert" : undefined}
           className={`min-w-0 flex-1 truncate text-right text-sm ${statusClass}`}
           title={statusText}
         >

@@ -65,15 +65,13 @@ export async function waitStaged(
 }
 
 export async function submitComposedJob(page: Page) {
-  // exact: the button text becomes "Submitting…" (disabled) on click.
+  // exact: the button text becomes "Submitting…" (disabled) on click. A
+  // successful submit navigates straight to the live job view.
   await page.getByRole("button", { name: "Submit", exact: true }).click();
-  const status = page.getByRole("status");
-  await expect(status).toContainText("Job submitted.", { timeout: 30_000 });
-  const jobId = (await status.textContent())?.match(
-    /Job submitted\.\s*([0-9a-f-]{36})/,
-  )?.[1];
+  await page.waitForURL(/\/jobs\/[0-9a-f-]{36}/, { timeout: 30_000 });
+  const jobId = page.url().match(/\/jobs\/([0-9a-f-]{36})/)?.[1];
   if (!jobId) {
-    throw new Error("could not parse job id from the submission status");
+    throw new Error("could not parse job id from the post-submit URL");
   }
   return jobId;
 }

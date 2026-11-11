@@ -173,7 +173,8 @@ export function MappingMatrix({
   const folderPlaceholder = (
     <div className="flex h-full min-h-80 items-center justify-center rounded-xl border-2 border-dashed border-line bg-ink/[0.02] p-6">
       <p className="text-center text-sm text-muted">
-        Select destination folders in the tree to start mapping files.
+        Select destination folders in the tree. Every file goes to every
+        selected folder — uncheck cells to remove exceptions.
       </p>
     </div>
   );
@@ -352,7 +353,7 @@ export function MappingMatrix({
                           className={`flex h-9 w-full min-w-9 cursor-pointer items-center justify-center rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-fill ${
                             checked
                               ? "border-accent-fill bg-accent-fill text-accent-ink"
-                              : "border-transparent hover:border-line hover:bg-ink/5"
+                              : "border-transparent text-muted hover:border-line hover:bg-ink/5"
                           }`}
                           onMouseDown={(event) => {
                             if (event.button !== 0) {
@@ -377,7 +378,7 @@ export function MappingMatrix({
                             }
                           }}
                         >
-                          {checked && "✓"}
+                          {checked ? "✓" : "✕"}
                         </div>
                       </td>
                     );

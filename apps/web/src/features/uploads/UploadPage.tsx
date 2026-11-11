@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { ApiError } from "../../lib/api";
 import { Card } from "../../components/Card";
 import { submitJob } from "../jobs/api";
@@ -8,6 +9,7 @@ import { uploadManager } from "./instance";
 import { useUploads } from "./useUploads";
 
 export function UploadPage() {
+  const navigate = useNavigate();
   const items = useUploads();
   const tree = useTree(false);
   return (
@@ -47,7 +49,10 @@ export function UploadPage() {
           items={items}
           tree={tree.data}
           submit={submitJob}
-          onSubmitted={(ids) => ids.forEach((id) => uploadManager.remove(id))}
+          onSubmitted={(ids, jobId) => {
+            ids.forEach((id) => uploadManager.remove(id));
+            void navigate({ to: "/jobs/$jobId", params: { jobId } });
+          }}
           onRetryItem={(id) => uploadManager.retry(id)}
           onRemoveItem={(id) => uploadManager.remove(id)}
         />

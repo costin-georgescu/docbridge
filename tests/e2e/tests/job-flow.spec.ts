@@ -44,22 +44,24 @@ test("upload, map, submit, track to completion and download", async ({
     "Periodic Reports",
   ).click();
 
-  // Assign every file to both folders through the matrix column headers.
+  // Every file is pre-assigned to both folders; the matrix removes
+  // exceptions — exclude the PNG from the site folder and put it back.
   const siteDest = folderPath(
     "Oncology Site A",
     "Investigator Site File",
     "IRB & IEC Approvals",
   );
-  const centralDest = folderPath(
-    "Central Regulatory",
-    "Safety Reporting",
-    "Periodic Reports",
-  );
+  await expect(
+    page.getByText("Files 2/100 · Folders 2/20 · Tasks 4/2,000"),
+  ).toBeVisible();
   await page
-    .getByRole("checkbox", { name: `Assign ${siteDest} to all files` })
+    .getByRole("checkbox", { name: `${pngName}: ${siteDest}` })
     .click();
+  await expect(
+    page.getByText("Files 2/100 · Folders 2/20 · Tasks 3/2,000"),
+  ).toBeVisible();
   await page
-    .getByRole("checkbox", { name: `Assign ${centralDest} to all files` })
+    .getByRole("checkbox", { name: `${pngName}: ${siteDest}` })
     .click();
   await expect(
     page.getByText("Files 2/100 · Folders 2/20 · Tasks 4/2,000"),
@@ -69,10 +71,7 @@ test("upload, map, submit, track to completion and download", async ({
 
   // Flow 3: the job list and the live detail view.
   await page.goto("/jobs");
-  await page
-    .getByRole("link", { name: /20\d\d/ })
-    .first()
-    .click();
+  await page.locator(`a[href="/jobs/${jobId}"]`).click();
   await expect(page).toHaveURL(new RegExp(`/jobs/${jobId}`));
   await waitJobCompleted(page);
   await expect(page.getByText("4 of 4 tasks delivered")).toBeVisible();

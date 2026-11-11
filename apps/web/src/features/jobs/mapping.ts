@@ -7,14 +7,16 @@ import {
 } from "@docbridge/contracts";
 import { UploadItem } from "../uploads/upload-manager";
 
+// Every file is assigned to every chosen folder by default; the state only
+// records the exceptions a user removed through the matrix.
 export interface MappingState {
   folderIds: string[];
-  assignments: Record<string, string[]>;
+  excluded: Record<string, string[]>;
 }
 
 export const initialMappingState: MappingState = {
   folderIds: [],
-  assignments: {},
+  excluded: {},
 };
 
 export type MappingAction =
@@ -45,24 +47,24 @@ function applyCell(
   if (!state.folderIds.includes(folderId)) {
     return state;
   }
-  const current = state.assignments[itemId] ?? [];
+  const current = state.excluded[itemId] ?? [];
   const has = current.includes(folderId);
-  if (has === assigned) {
+  if (has === !assigned) {
     return state;
   }
   const next = ordered(
     state.folderIds,
     assigned
-      ? [...current, folderId]
-      : current.filter((id) => id !== folderId),
+      ? current.filter((id) => id !== folderId)
+      : [...current, folderId],
   );
-  const assignments = { ...state.assignments };
+  const excluded = { ...state.excluded };
   if (next.length > 0) {
-    assignments[itemId] = next;
+    excluded[itemId] = next;
   } else {
-    delete assignments[itemId];
+    delete excluded[itemId];
   }
-  return { ...state, assignments };
+  return { ...state, excluded };
 }
 
 export function mappingReducer(
@@ -72,16 +74,16 @@ export function mappingReducer(
   switch (action.type) {
     case "toggleFolder": {
       if (state.folderIds.includes(action.folderId)) {
-        const assignments: Record<string, string[]> = {};
-        for (const [itemId, folderIds] of Object.entries(state.assignments)) {
+        const excluded: Record<string, string[]> = {};
+        for (const [itemId, folderIds] of Object.entries(state.excluded)) {
           const next = folderIds.filter((id) => id !== action.folderId);
           if (next.length > 0) {
-            assignments[itemId] = next;
+            excluded[itemId] = next;
           }
         }
         return {
           folderIds: state.folderIds.filter((id) => id !== action.folderId),
-          assignments,
+          excluded,
         };
       }
       if (state.folderIds.length >= MAX_JOB_FOLDERS) {
@@ -90,12 +92,12 @@ export function mappingReducer(
       return { ...state, folderIds: [...state.folderIds, action.folderId] };
     }
     case "toggleCell": {
-      const current = state.assignments[action.itemId] ?? [];
+      const current = state.excluded[action.itemId] ?? [];
       return applyCell(
         state,
         action.itemId,
         action.folderId,
-        !current.includes(action.folderId),
+        current.includes(action.folderId),
       );
     }
     case "setCell":
@@ -106,23 +108,23 @@ export function mappingReducer(
         action.assigned,
       );
     case "setRow": {
-      const assignments = { ...state.assignments };
+      const excluded = { ...state.excluded };
       if (action.assigned) {
-        assignments[action.itemId] = [...state.folderIds];
+        delete excluded[action.itemId];
       } else {
-        delete assignments[action.itemId];
+        excluded[action.itemId] = [...state.folderIds];
       }
-      return { ...state, assignments };
+      return { ...state, excluded };
     }
     case "setAll": {
-      if (!action.assigned) {
-        return { ...state, assignments: {} };
+      if (action.assigned) {
+        return { ...state, excluded: {} };
       }
-      const assignments: Record<string, string[]> = {};
+      const excluded: Record<string, string[]> = {};
       for (const itemId of action.itemIds) {
-        assignments[itemId] = [...state.folderIds];
+        excluded[itemId] = [...state.folderIds];
       }
-      return { ...state, assignments };
+      return { ...state, excluded };
     }
     case "setColumn": {
       let next = state;
@@ -147,15 +149,13 @@ export function summarize(
   state: MappingState,
   items: UploadItem[],
 ): MappingSummary {
-  const rows = items.map((item) => ({
-    item,
-    folderIds: ordered(
-      state.folderIds,
-      (state.assignments[item.id] ?? []).filter((id) =>
-        state.folderIds.includes(id),
-      ),
-    ),
-  }));
+  const rows = items.map((item) => {
+    const excluded = new Set(state.excluded[item.id] ?? []);
+    return {
+      item,
+      folderIds: state.folderIds.filter((id) => !excluded.has(id)),
+    };
+  });
   const counts = {
     files: items.length,
     folders: state.folderIds.length,

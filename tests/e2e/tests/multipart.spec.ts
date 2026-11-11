@@ -3,7 +3,6 @@ import { expect, test } from "@playwright/test";
 import { fixture } from "../fixtures";
 import {
   folderCheckbox,
-  folderPath,
   login,
   SEED_USERS,
   sha256File,
@@ -42,10 +41,7 @@ test("a 100 MB file uploads multipart and is delivered end to end", async ({
     "Safety Reporting",
     "SUSARs",
   ).click();
-  const reports = folderPath("Oncology Site A", "Safety Reporting", "SUSARs");
-  await page
-    .getByRole("checkbox", { name: `Assign ${reports} to all files` })
-    .click();
+  // The file is pre-assigned to the chosen folder; no matrix clicks needed.
   await expect(
     page.getByText("Files 1/100 · Folders 1/20 · Tasks 1/2,000"),
   ).toBeVisible();

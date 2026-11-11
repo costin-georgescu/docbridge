@@ -37,6 +37,15 @@ describe("mappingReducer", () => {
     expect(s.folderIds).toEqual([F2, F1]);
   });
 
+  it("assigns new folders to every file implicitly", () => {
+    let s = initialMappingState;
+    s = mappingReducer(s, { type: "toggleFolder", folderId: F1 });
+    s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
+    const sum = summarize(s, [item()]);
+    expect(sum.rows[0].folderIds).toEqual([F1, F2]);
+    expect(sum.counts.tasks).toBe(2);
+  });
+
   it("ignores a 21st folder", () => {
     let s = initialMappingState;
     for (let i = 0; i < 21; i++) {
@@ -46,7 +55,7 @@ describe("mappingReducer", () => {
     expect(s.folderIds).not.toContain(folderId(20));
   });
 
-  it("removing a folder strips it from every assignment", () => {
+  it("removing a folder strips it from every exclusion", () => {
     let s = initialMappingState;
     s = mappingReducer(s, { type: "toggleFolder", folderId: F1 });
     s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
@@ -55,7 +64,7 @@ describe("mappingReducer", () => {
     s = mappingReducer(s, { type: "toggleCell", itemId: "i2", folderId: F1 });
     s = mappingReducer(s, { type: "toggleFolder", folderId: F1 });
     expect(s.folderIds).toEqual([F2]);
-    expect(s.assignments).toEqual({ i1: [F2] });
+    expect(s.excluded).toEqual({ i1: [F2] });
   });
 
   it("toggleCell on an unchosen folder is a no-op", () => {
@@ -67,35 +76,35 @@ describe("mappingReducer", () => {
     expect(s).toBe(initialMappingState);
   });
 
-  it("toggleCell keeps assignment order in chosen-folder order", () => {
+  it("toggleCell keeps exclusion order in chosen-folder order", () => {
     let s = initialMappingState;
     s = mappingReducer(s, { type: "toggleFolder", folderId: F1 });
     s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
     s = mappingReducer(s, { type: "toggleCell", itemId: "i1", folderId: F2 });
     s = mappingReducer(s, { type: "toggleCell", itemId: "i1", folderId: F1 });
-    expect(s.assignments.i1).toEqual([F1, F2]);
+    expect(s.excluded.i1).toEqual([F1, F2]);
   });
 
-  it("setColumn assigns and unassigns", () => {
+  it("setColumn excludes and re-includes", () => {
     let s = initialMappingState;
     s = mappingReducer(s, { type: "toggleFolder", folderId: F1 });
-    s = mappingReducer(s, {
-      type: "setColumn",
-      folderId: F1,
-      itemIds: ["i1", "i2"],
-      assigned: true,
-    });
-    expect(s.assignments).toEqual({ i1: [F1], i2: [F1] });
     s = mappingReducer(s, {
       type: "setColumn",
       folderId: F1,
       itemIds: ["i1", "i2"],
       assigned: false,
     });
-    expect(s.assignments).toEqual({});
+    expect(s.excluded).toEqual({ i1: [F1], i2: [F1] });
+    s = mappingReducer(s, {
+      type: "setColumn",
+      folderId: F1,
+      itemIds: ["i1", "i2"],
+      assigned: true,
+    });
+    expect(s.excluded).toEqual({});
   });
 
-  it("setCell assigns a single pair and is a no-op when unchanged", () => {
+  it("setCell excludes a single pair and is a no-op when unchanged", () => {
     let s = mappingReducer(initialMappingState, {
       type: "toggleFolder",
       folderId: F1,
@@ -104,55 +113,55 @@ describe("mappingReducer", () => {
       type: "setCell",
       itemId: "i1",
       folderId: F1,
-      assigned: true,
+      assigned: false,
     });
-    expect(s.assignments).toEqual({ i1: [F1] });
+    expect(s.excluded).toEqual({ i1: [F1] });
     const same = mappingReducer(s, {
       type: "setCell",
       itemId: "i1",
       folderId: F1,
-      assigned: true,
+      assigned: false,
     });
     expect(same).toBe(s);
     s = mappingReducer(s, {
       type: "setCell",
       itemId: "i1",
       folderId: F1,
+      assigned: true,
+    });
+    expect(s.excluded).toEqual({});
+  });
+
+  it("setRow excludes or restores every chosen folder for one file", () => {
+    let s = mappingReducer(initialMappingState, {
+      type: "toggleFolder",
+      folderId: F1,
+    });
+    s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
+    s = mappingReducer(s, { type: "setRow", itemId: "i1", assigned: false });
+    expect(s.excluded).toEqual({ i1: [F1, F2] });
+    s = mappingReducer(s, { type: "setRow", itemId: "i1", assigned: true });
+    expect(s.excluded).toEqual({});
+  });
+
+  it("setAll clears or fills the exclusion grid", () => {
+    let s = mappingReducer(initialMappingState, {
+      type: "toggleFolder",
+      folderId: F1,
+    });
+    s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
+    s = mappingReducer(s, {
+      type: "setAll",
+      itemIds: ["i1", "i2"],
       assigned: false,
     });
-    expect(s.assignments).toEqual({});
-  });
-
-  it("setRow assigns every chosen folder to one file", () => {
-    let s = mappingReducer(initialMappingState, {
-      type: "toggleFolder",
-      folderId: F1,
-    });
-    s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
-    s = mappingReducer(s, { type: "setRow", itemId: "i1", assigned: true });
-    expect(s.assignments).toEqual({ i1: [F1, F2] });
-    s = mappingReducer(s, { type: "setRow", itemId: "i1", assigned: false });
-    expect(s.assignments).toEqual({});
-  });
-
-  it("setAll fills or clears the whole grid", () => {
-    let s = mappingReducer(initialMappingState, {
-      type: "toggleFolder",
-      folderId: F1,
-    });
-    s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
+    expect(s.excluded).toEqual({ i1: [F1, F2], i2: [F1, F2] });
     s = mappingReducer(s, {
       type: "setAll",
       itemIds: ["i1", "i2"],
       assigned: true,
     });
-    expect(s.assignments).toEqual({ i1: [F1, F2], i2: [F1, F2] });
-    s = mappingReducer(s, {
-      type: "setAll",
-      itemIds: ["i1", "i2"],
-      assigned: false,
-    });
-    expect(s.assignments).toEqual({});
+    expect(s.excluded).toEqual({});
   });
 });
 
@@ -193,6 +202,17 @@ describe("summarize", () => {
     expect(s.request).toBeNull();
   });
 
+  it("blocker: file excluded from every folder", () => {
+    let s = mappingReducer(initialMappingState, {
+      type: "toggleFolder",
+      folderId: F1,
+    });
+    s = mappingReducer(s, { type: "setRow", itemId: "i1", assigned: false });
+    const sum = summarize(s, [staged]);
+    expect(sum.blockers).toEqual(["1 file(s) have no destination."]);
+    expect(sum.request).toBeNull();
+  });
+
   it("blockers: too many files and tasks", () => {
     let s = initialMappingState;
     const folders = Array.from({ length: 20 }, (_, i) => folderId(i));
@@ -202,20 +222,6 @@ describe("summarize", () => {
     const items = Array.from({ length: 101 }, (_, i) =>
       item({ id: `i${i}`, fileId: `file-${i}` }),
     );
-    s = mappingReducer(s, {
-      type: "setColumn",
-      folderId: folders[0],
-      itemIds: items.map((it) => it.id),
-      assigned: true,
-    });
-    for (const f of folders.slice(1)) {
-      s = mappingReducer(s, {
-        type: "setColumn",
-        folderId: f,
-        itemIds: items.map((it) => it.id),
-        assigned: true,
-      });
-    }
     const sum = summarize(s, items);
     expect(sum.blockers).toContain("A job can include at most 100 files.");
     expect(sum.blockers).toContain(
@@ -224,22 +230,20 @@ describe("summarize", () => {
     expect(sum.request).toBeNull();
   });
 
-  it("ignores assignments for items no longer present", () => {
+  it("ignores exclusions for items no longer present", () => {
     let s = initialMappingState;
     s = mappingReducer(s, { type: "toggleFolder", folderId: F1 });
     s = mappingReducer(s, { type: "toggleCell", itemId: "gone", folderId: F1 });
     const sum = summarize(s, [staged]);
-    expect(sum.counts.tasks).toBe(0);
-    expect(sum.blockers).toContain("1 file(s) have no destination.");
+    expect(sum.counts.tasks).toBe(1);
+    expect(sum.rows[0].folderIds).toEqual([F1]);
   });
 
   it("builds the request in chosen-folder order when valid", () => {
     let s = initialMappingState;
     s = mappingReducer(s, { type: "toggleFolder", folderId: F2 });
     s = mappingReducer(s, { type: "toggleFolder", folderId: F1 });
-    s = mappingReducer(s, { type: "toggleCell", itemId: "i1", folderId: F1 });
-    s = mappingReducer(s, { type: "toggleCell", itemId: "i1", folderId: F2 });
-    s = mappingReducer(s, { type: "toggleCell", itemId: "i2", folderId: F1 });
+    s = mappingReducer(s, { type: "toggleCell", itemId: "i2", folderId: F2 });
     const items = [staged, item({ id: "i2", name: "b.pdf", fileId: FILE_B })];
     const sum = summarize(s, items);
     expect(sum.blockers).toEqual([]);

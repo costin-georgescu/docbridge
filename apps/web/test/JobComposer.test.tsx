@@ -112,47 +112,52 @@ describe("JobComposer", () => {
       screen.getByRole("columnheader", { name: /Contracts/ }),
     ).toBeDefined();
 
+    // Every file is pre-assigned to every folder; the matrix removes
+    // exceptions. Submit is already enabled.
     const submitButton = screen.getByRole("button", { name: "Submit" });
-    expect(submitButton).toHaveProperty("disabled", true);
-    expect(screen.getByText("2 file(s) have no destination.")).toBeDefined();
+    expect(submitButton).toHaveProperty("disabled", false);
 
-    await user.click(
-      screen.getByRole("checkbox", {
-        name: "Assign Alpha Team / Invoices / 2024 to all files",
-      }),
-    );
-    await user.click(
-      screen.getByRole("checkbox", {
-        name: "b.pdf: Beta Team / Legal / Contracts",
-      }),
-    );
     // The column header carries the folder path; each row shows a checked cell.
     expect(screen.getByTitle("Alpha Team / Invoices / 2024")).toBeDefined();
     for (const name of [
       "a.pdf: Alpha Team / Invoices / 2024",
       "b.pdf: Alpha Team / Invoices / 2024",
+      "b.pdf: Beta Team / Legal / Contracts",
     ]) {
       expect(
         screen.getByRole("checkbox", { name }).getAttribute("aria-checked"),
       ).toBe("true");
     }
 
-    // Uncheck b.pdf's Contracts cell, then re-check it.
+    // Remove a.pdf from Contracts — the only exception.
     await user.click(
       screen.getByRole("checkbox", {
-        name: "b.pdf: Beta Team / Legal / Contracts",
+        name: "a.pdf: Beta Team / Legal / Contracts",
       }),
     );
     expect(
       screen
         .getByRole("checkbox", {
-          name: "b.pdf: Beta Team / Legal / Contracts",
+          name: "a.pdf: Beta Team / Legal / Contracts",
         })
         .getAttribute("aria-checked"),
     ).toBe("false");
+    // Toggling it back on and off again restores the exception.
     await user.click(
       screen.getByRole("checkbox", {
-        name: "b.pdf: Beta Team / Legal / Contracts",
+        name: "a.pdf: Beta Team / Legal / Contracts",
+      }),
+    );
+    expect(
+      screen
+        .getByRole("checkbox", {
+          name: "a.pdf: Beta Team / Legal / Contracts",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "a.pdf: Beta Team / Legal / Contracts",
       }),
     );
 
@@ -168,19 +173,16 @@ describe("JobComposer", () => {
     await waitFor(() => {
       expect(onSubmitted).toHaveBeenCalledWith(["i1", "i2"], JOB_ID);
     });
-    const status = await screen.findByRole("status");
-    expect(status.textContent).toContain("Job submitted.");
-    expect(status.textContent).toContain(JOB_ID);
   });
 
-  it("assigns a whole row and the whole grid via header checkboxes", async () => {
+  it("clears a whole row and the whole grid via header checkboxes", async () => {
     const user = userEvent.setup();
     renderComposer();
     await expandAll(user);
     await user.click(screen.getByRole("checkbox", { name: "2024" }));
     await user.click(screen.getByRole("checkbox", { name: "Contracts" }));
 
-    // Row header: one file to every chosen folder.
+    // Rows start fully assigned; the row header removes every folder.
     await user.click(
       screen.getByRole("checkbox", { name: "Assign a.pdf to all folders" }),
     );
@@ -190,9 +192,9 @@ describe("JobComposer", () => {
           name: "a.pdf: Alpha Team / Invoices / 2024",
         })
         .getAttribute("aria-checked"),
-    ).toBe("true");
+    ).toBe("false");
 
-    // Corner header: every file to every folder.
+    // Corner header: restore every file to every folder.
     await user.click(
       screen.getByRole("checkbox", {
         name: "Assign every file to every folder",
@@ -201,6 +203,7 @@ describe("JobComposer", () => {
     for (const name of [
       "b.pdf: Alpha Team / Invoices / 2024",
       "b.pdf: Beta Team / Legal / Contracts",
+      "a.pdf: Alpha Team / Invoices / 2024",
     ]) {
       expect(
         screen.getByRole("checkbox", { name }).getAttribute("aria-checked"),
@@ -315,11 +318,6 @@ describe("JobComposer", () => {
     renderComposer({ submit });
     await expandAll(user);
     await user.click(screen.getByRole("checkbox", { name: "2024" }));
-    await user.click(
-      screen.getByRole("checkbox", {
-        name: "Assign Alpha Team / Invoices / 2024 to all files",
-      }),
-    );
     await user.click(screen.getByRole("button", { name: "Submit" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Files were already submitted");
