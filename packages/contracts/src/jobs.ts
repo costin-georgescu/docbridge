@@ -153,10 +153,56 @@ export type JobTaskResponse = z.infer<typeof JobTaskResponse>;
 
 export const JobDetailResponse = JobSummary.extend({
   files: z.array(JobFileResponse),
-  tasks: z.array(JobTaskResponse),
+  // Pending tasks with at least one attempt — the "retrying" count the
+  // detail header shows. Tasks themselves come from GET /jobs/:id/tasks.
+  retrying: z.number().int(),
 });
 
 export type JobDetailResponse = z.infer<typeof JobDetailResponse>;
+
+export type JobTaskCursor = { createdAt: Date; id: string };
+
+// Composite keyset cursor over (created_at asc, id asc).
+const TaskCursorParts = z.tuple([z.iso.datetime(), z.uuid()]);
+
+export function encodeTaskCursor(cursor: JobTaskCursor): string {
+  return `${cursor.createdAt.toISOString()}~${cursor.id}`;
+}
+
+export const JobTaskListQuery = z.object({
+  status: TaskStatus.optional(),
+  cursor: z
+    .string()
+    .transform((s, ctx) => {
+      const sep = s.indexOf("~");
+      if (sep < 0) {
+        ctx.addIssue({ code: "custom", message: "invalid cursor" });
+        return z.NEVER;
+      }
+      const parsed = TaskCursorParts.safeParse([
+        s.slice(0, sep),
+        s.slice(sep + 1),
+      ]);
+      if (!parsed.success) {
+        ctx.addIssue({ code: "custom", message: "invalid cursor" });
+        return z.NEVER;
+      }
+      return { createdAt: new Date(parsed.data[0]), id: parsed.data[1] };
+    })
+    .optional(),
+  // The web client re-fetches its whole loaded window in one request when
+  // counts change, so the bound is the job size, not the page size.
+  limit: z.coerce.number().int().min(1).max(MAX_JOB_TASKS).default(50),
+});
+
+export type JobTaskListQuery = z.infer<typeof JobTaskListQuery>;
+
+export const JobTaskListResponse = z.object({
+  items: z.array(JobTaskResponse),
+  nextCursor: z.string().nullable(),
+});
+
+export type JobTaskListResponse = z.infer<typeof JobTaskListResponse>;
 
 export const JobFileDownloadResponse = z.object({
   url: z.string(),

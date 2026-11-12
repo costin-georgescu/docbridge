@@ -3,7 +3,9 @@ import {
   checkJobLimits,
   deriveJobStatus,
   encodeJobCursor,
+  encodeTaskCursor,
   JobListQuery,
+  JobTaskListQuery,
 } from "../src";
 
 const fid = (n: number) => `file-${String(n).padStart(4, "0")}`;
@@ -98,18 +100,18 @@ describe("deriveJobStatus", () => {
   });
 
   it("is in_progress when pending tasks have retry attempts", () => {
-    expect(
-      deriveJobStatus(counts({ pending: 5, pendingAttempts: 2 })),
-    ).toBe("in_progress");
+    expect(deriveJobStatus(counts({ pending: 5, pendingAttempts: 2 }))).toBe(
+      "in_progress",
+    );
   });
 
   it("is in_progress when a task is running or mixed with completed", () => {
-    expect(
-      deriveJobStatus(counts({ pending: 3, inProgress: 1 })),
-    ).toBe("in_progress");
-    expect(
-      deriveJobStatus(counts({ pending: 2, completed: 1 })),
-    ).toBe("in_progress");
+    expect(deriveJobStatus(counts({ pending: 3, inProgress: 1 }))).toBe(
+      "in_progress",
+    );
+    expect(deriveJobStatus(counts({ pending: 2, completed: 1 }))).toBe(
+      "in_progress",
+    );
   });
 
   it("is completed only when every task completed", () => {
@@ -121,9 +123,9 @@ describe("deriveJobStatus", () => {
   });
 
   it("is completed_with_failures for a final mix of completed and failed", () => {
-    expect(
-      deriveJobStatus(counts({ completed: 3, failed: 1 })),
-    ).toBe("completed_with_failures");
+    expect(deriveJobStatus(counts({ completed: 3, failed: 1 }))).toBe(
+      "completed_with_failures",
+    );
   });
 
   it("is in_progress while a non-final task remains among failures", () => {
@@ -158,5 +160,34 @@ describe("JobListQuery", () => {
       false,
     );
     expect(JobListQuery.safeParse({ limit: "51" }).success).toBe(false);
+  });
+});
+
+describe("JobTaskListQuery", () => {
+  const cursor = {
+    createdAt: new Date("2026-10-30T12:34:56.789Z"),
+    id: "11111111-2222-4333-8444-555555555555",
+  };
+
+  it("round-trips an encoded cursor", () => {
+    const parsed = JobTaskListQuery.parse({
+      cursor: encodeTaskCursor(cursor),
+    });
+    expect(parsed.cursor).toEqual(cursor);
+    expect(parsed.limit).toBe(50);
+  });
+
+  it("accepts a status filter and a limit", () => {
+    const parsed = JobTaskListQuery.parse({ status: "failed", limit: "10" });
+    expect(parsed.status).toBe("failed");
+    expect(parsed.limit).toBe(10);
+  });
+
+  it("rejects a malformed cursor, bad status and a limit over 2,000", () => {
+    expect(JobTaskListQuery.safeParse({ cursor: "not-a-cursor" }).success).toBe(
+      false,
+    );
+    expect(JobTaskListQuery.safeParse({ status: "bogus" }).success).toBe(false);
+    expect(JobTaskListQuery.safeParse({ limit: "2001" }).success).toBe(false);
   });
 });

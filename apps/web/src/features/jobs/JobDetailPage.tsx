@@ -25,16 +25,12 @@ export function JobDetailPage() {
     );
   }
   const data = job.data;
-  const retrying = data.tasks.filter(
-    (t) => t.status === "pending" && t.attemptCount > 0,
-  ).length;
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-16">
       <Card>
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold text-ink">
-            Job{" "}
-            <span className="font-mono text-sm font-normal">{data.id}</span>
+            Job <span className="font-mono text-sm font-normal">{data.id}</span>
           </h1>
           <JobStatusBadge status={data.status} />
         </div>
@@ -47,15 +43,19 @@ export function JobDetailPage() {
         <p className="mt-0.5 text-sm text-muted">
           {data.filesCount} {data.filesCount === 1 ? "file" : "files"} ·{" "}
           {data.counts.completed} of {data.tasksCount} tasks delivered
-          {data.counts.failed > 0 &&
-            ` · ${data.counts.failed} failed`}
+          {data.counts.failed > 0 && ` · ${data.counts.failed} failed`}
           {data.counts.inProgress > 0 &&
             ` · ${data.counts.inProgress} in progress`}
-          {retrying > 0 && ` · ${retrying} retrying`}
+          {data.retrying > 0 && ` · ${data.retrying} retrying`}
         </p>
       </Card>
       <JobFileList jobId={data.id} files={data.files} />
-      <TaskTable files={data.files} tasks={data.tasks} />
+      <TaskTable
+        jobId={data.id}
+        files={data.files}
+        counts={data.counts}
+        tasksCount={data.tasksCount}
+      />
       <p className="text-sm">
         <Link to="/jobs" className="text-accent hover:underline">
           ← Back to jobs

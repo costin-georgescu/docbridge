@@ -1,6 +1,6 @@
 # ADR-12: UI polls job status on an interval
 
-**Status:** Awaiting review | **Date:** 05.10.2026 | **Author:** Costin Georgescu
+**Status:** Awaiting review | **Date:** 05.10.2026 | **Updated:** 12.11.2026 | **Author:** Costin Georgescu
 
 ## Context
 
@@ -45,5 +45,7 @@ One way push over HTTP with browser auto reconnect.
 **Option 1.**
 
 FR5 requires automatic updates, not push delivery. Polling satisfies it at trivial cost and adds no connection infrastructure. We accept status lagging by up to the poll interval as deliveries aren't instant anyway, so users can't perceive the difference.
+
+*Update 12.11.2026:* the "trivially small load" premise held for request count but not payload — the job detail response carried every task row, ~600 KB per poll per viewer on a 2,000-task job. The poll now returns the summary only (counts incl. `retrying`, files); task rows moved to `GET /api/jobs/:id/tasks`, keyset-paginated and re-fetched only when the polled counts change. Option 1 stands; the accepted "unchanged data" con now applies to a few hundred bytes per poll rather than the full task list.
 
 **Ratified by:** Awaiting review

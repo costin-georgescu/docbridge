@@ -56,7 +56,8 @@ function uuidList(ids: string[]) {
 async function cleanupDocbridge() {
   const db = createDocbridgeClient(docbridgeUrl!);
   try {
-    const jobIds = Prisma.Prisma.sql`SELECT id FROM jobs WHERE submitter_user_id = ${PERF_USER_ID}::uuid`;
+    const jobIds = Prisma.Prisma
+      .sql`SELECT id FROM jobs WHERE submitter_user_id = ${PERF_USER_ID}::uuid`;
     await db.$executeRaw`DELETE FROM task_attempts WHERE task_id IN (SELECT id FROM tasks WHERE job_id IN (${jobIds}))`;
     await db.$executeRaw`DELETE FROM tasks WHERE job_id IN (${jobIds})`;
     await db.$executeRaw`DELETE FROM staged_files WHERE owner_user_id = ${PERF_USER_ID}::uuid`;
@@ -71,8 +72,10 @@ async function cleanupPlatform() {
   const db = createPlatformClient(platformUrl!);
   try {
     const teams = uuidList(TEAM_IDS);
-    const binders = Prisma.Prisma.sql`SELECT id FROM binders WHERE team_id IN (${teams})`;
-    const folders = Prisma.Prisma.sql`SELECT id FROM folders WHERE binder_id IN (${binders})`;
+    const binders = Prisma.Prisma
+      .sql`SELECT id FROM binders WHERE team_id IN (${teams})`;
+    const folders = Prisma.Prisma
+      .sql`SELECT id FROM folders WHERE binder_id IN (${binders})`;
     await db.$executeRaw`DELETE FROM document_versions WHERE document_id IN (SELECT id FROM documents WHERE folder_id IN (${folders}))`;
     await db.$executeRaw`DELETE FROM documents WHERE folder_id IN (${folders})`;
     await db.$executeRaw`DELETE FROM folders WHERE binder_id IN (${binders})`;
@@ -130,7 +133,11 @@ async function seedPlatform(): Promise<string[]> {
     }
   }
   await db.binder.createMany({
-    data: binders.map((b) => ({ id: b.id, teamId: TEAM_IDS[b.teamIndex], name: b.name })),
+    data: binders.map((b) => ({
+      id: b.id,
+      teamId: TEAM_IDS[b.teamIndex],
+      name: b.name,
+    })),
   });
 
   const folders: {
@@ -144,7 +151,12 @@ async function seedPlatform(): Promise<string[]> {
     let parentId: string | null = null;
     for (let f = 0; f < TOP_FOLDERS_PER_BINDER; f++) {
       const id = randomUUID();
-      folders.push({ id, binderId: binder.id, parentFolderId: null, name: `Folder ${f + 1}` });
+      folders.push({
+        id,
+        binderId: binder.id,
+        parentFolderId: null,
+        name: `Folder ${f + 1}`,
+      });
       if (f === 0) parentId = id;
     }
     for (let c = 0; c < CHILD_FOLDERS; c++) {
@@ -189,6 +201,63 @@ async function seedAuth() {
   await db.$disconnect();
 }
 
+// One large job for the job-detail poll run: 100 files x 20 folders =
+// 2,000 tasks. Tasks are inserted directly (same deviation as staged file
+// seeding) and marked dispatched so a live dispatcher does not claim them;
+// the sweep only re-publishes after 25 idle minutes.
+async function seedJob(folderIds: string[]): Promise<string> {
+  const db = createDocbridgeClient(docbridgeUrl!);
+  const jobId = randomUUID();
+  const fileIds = Array.from({ length: FILES_PER_JOB }, () => randomUUID());
+  await db.job.create({
+    data: {
+      id: jobId,
+      submitterUserId: PERF_USER_ID,
+      submitterDisplayName: "Perf User",
+      submittedAt: new Date(),
+      filesCount: FILES_PER_JOB,
+      tasksCount: FILES_PER_JOB * folderIds.length,
+      teams: {
+        createMany: {
+          data: TEAM_IDS.slice(0, JOB_FOLDER_COUNT).map((teamId) => ({
+            teamId,
+          })),
+        },
+      },
+    },
+  });
+  await db.stagedFile.createMany({
+    data: fileIds.map((id, i) => ({
+      id,
+      ownerUserId: PERF_USER_ID,
+      jobId,
+      fileName: `perf-job-${i}.pdf`,
+      contentType: "application/pdf",
+      sizeBytes: 4096,
+      checksumCrc32c: "AAAAAA==",
+      storageKey: `staged/${PERF_USER_ID}/${id}`,
+      status: "staged" as const,
+      stagedAt: new Date(),
+    })),
+  });
+  const now = new Date();
+  await db.task.createMany({
+    data: fileIds.flatMap((fileId) =>
+      folderIds.map((folderId, f) => ({
+        jobId,
+        stagedFileId: fileId,
+        destinationFolderId: folderId,
+        destinationTeamId: TEAM_IDS[f],
+        destinationPath: `Perf Team ${f + 1} / Binder 1 / Archive 1`,
+        status: "pending" as const,
+        dispatchedAt: now,
+      })),
+    ),
+  });
+  await db.$disconnect();
+  return jobId;
+}
+
 async function seedStagedFiles(): Promise<string[][]> {
   const db = createDocbridgeClient(docbridgeUrl!);
   const chunks: string[][] = [];
@@ -212,7 +281,9 @@ async function seedStagedFiles(): Promise<string[][]> {
       chunks[Math.floor(i / FILES_PER_JOB)].push(id);
     }
     await db.stagedFile.createMany({ data: rows });
-    process.stdout.write(`\rstaged_files: ${Math.min(base + INSERT_BATCH, total)}/${total}`);
+    process.stdout.write(
+      `\rstaged_files: ${Math.min(base + INSERT_BATCH, total)}/${total}`,
+    );
   }
   process.stdout.write("\n");
   await db.$disconnect();
@@ -227,6 +298,7 @@ async function main() {
   }
   const folderIds = await seedPlatform();
   await seedAuth();
+  const jobId = await seedJob(folderIds);
   const fileChunks = await seedStagedFiles();
 
   await writeFile(
@@ -236,6 +308,7 @@ async function main() {
         email: PERF_EMAIL,
         password: PERF_PASSWORD,
         folderIds,
+        jobId,
         iterations: fileChunks.length,
       },
       null,

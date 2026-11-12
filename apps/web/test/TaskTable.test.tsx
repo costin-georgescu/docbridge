@@ -1,12 +1,26 @@
 /**
  * @jest-environment jsdom
  */
-import { describe, expect, it } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { JobFileResponse, JobTaskResponse } from "@docbridge/contracts";
+import {
+  JobFileResponse,
+  JobTaskResponse,
+  TaskCounts,
+} from "@docbridge/contracts";
+
+jest.mock("../src/auth/session", () => ({
+  session: { authFetch: jest.fn() },
+}));
+
+import { session } from "../src/auth/session";
 import { TaskTable } from "../src/features/jobs/TaskTable";
 
+const authFetch = jest.mocked(session.authFetch);
+
+const JOB_ID = "33333333-0000-4000-8000-000000000003";
 const FILE_A = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const FILE_B = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 
@@ -14,6 +28,13 @@ const files: JobFileResponse[] = [
   { id: FILE_A, name: "a.pdf", sizeBytes: 2048 },
   { id: FILE_B, name: "b.pdf", sizeBytes: 512 },
 ];
+
+const counts: TaskCounts = {
+  pending: 1,
+  inProgress: 0,
+  completed: 1,
+  failed: 1,
+};
 
 function task(overrides: Partial<JobTaskResponse>): JobTaskResponse {
   return {
@@ -62,11 +83,36 @@ const tasks: JobTaskResponse[] = [
   }),
 ];
 
-describe("TaskTable", () => {
-  it("groups tasks under their file with status filter counts", () => {
-    render(<TaskTable files={files} tasks={tasks} />);
+function renderTable(opts: {
+  tasksCount?: number;
+  counts?: TaskCounts;
+  tasksFiles?: JobFileResponse[];
+}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <TaskTable
+        jobId={JOB_ID}
+        files={opts.tasksFiles ?? files}
+        counts={opts.counts ?? counts}
+        tasksCount={opts.tasksCount ?? tasks.length}
+      />
+    </QueryClientProvider>,
+  );
+}
 
-    expect(screen.getByText("a.pdf")).toBeDefined();
+describe("TaskTable", () => {
+  beforeEach(() => {
+    authFetch.mockClear();
+    authFetch.mockResolvedValue({ items: tasks, nextCursor: null });
+  });
+
+  it("groups tasks under their file with filter counts from the job summary", async () => {
+    renderTable({});
+
+    expect(await screen.findByText("a.pdf")).toBeDefined();
     expect(screen.getByText("b.pdf")).toBeDefined();
     expect(
       screen.getByRole("cell", { name: "Alpha / Invoices / 2024" }),
@@ -77,17 +123,22 @@ describe("TaskTable", () => {
     expect(screen.getByText("Pending (1)")).toBeDefined();
     expect(screen.getByText("Completed (1)")).toBeDefined();
     expect(screen.getByText("Failed (1)")).toBeDefined();
+    expect(authFetch).toHaveBeenCalledWith(
+      `/api/jobs/${JOB_ID}/tasks?limit=50`,
+    );
   });
 
-  it("renders retrying with the attempt number for pending tasks with attempts", () => {
-    render(<TaskTable files={files} tasks={tasks} />);
-    expect(screen.getByText("Retrying (attempt 2)")).toBeDefined();
+  it("renders retrying with the attempt number for pending tasks with attempts", async () => {
+    renderTable({});
+    expect(await screen.findByText("Retrying (attempt 2)")).toBeDefined();
   });
 
-  it("shows descriptive error text from lastError", () => {
-    render(<TaskTable files={files} tasks={tasks} />);
+  it("shows descriptive error text from lastError", async () => {
+    renderTable({});
     expect(
-      screen.getByText("The destination folder was not found on the platform"),
+      await screen.findByText(
+        "The destination folder was not found on the platform",
+      ),
     ).toBeDefined();
     expect(screen.getByText("folder was deleted")).toBeDefined();
     expect(
@@ -95,69 +146,59 @@ describe("TaskTable", () => {
     ).toBeDefined();
   });
 
-  it("filters tasks to a single status", async () => {
+  it("asks the server for the selected status when a filter chip is clicked", async () => {
     const user = userEvent.setup();
-    render(<TaskTable files={files} tasks={tasks} />);
+    renderTable({});
 
-    await user.click(
-      screen.getByRole("button", { name: "Completed (1)" }),
+    await user.click(await screen.findByRole("button", { name: "Failed (1)" }));
+    expect(authFetch).toHaveBeenCalledWith(
+      `/api/jobs/${JOB_ID}/tasks?status=failed&limit=50`,
     );
-    expect(
-      screen.getByRole("cell", { name: "Alpha / Invoices / 2024" }),
-    ).toBeDefined();
-    expect(
-      screen.queryByRole("cell", { name: "Beta / Legal / Contracts" }),
-    ).toBeNull();
-    expect(screen.queryByRole("cell", { name: "Gamma / Archive" })).toBeNull();
 
-    // Selecting another status swaps the filter — the rest stay deselected.
-    await user.click(screen.getByRole("button", { name: "Failed (1)" }));
-    expect(
-      screen.queryByRole("cell", { name: "Alpha / Invoices / 2024" }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("cell", { name: "Gamma / Archive" }),
-    ).toBeDefined();
-
-    // A filter with no matching tasks shows the empty-filter message.
-    await user.click(
-      screen.getByRole("button", { name: "In progress (0)" }),
-    );
-    expect(
-      screen.getByText("No tasks match the selected filters."),
-    ).toBeDefined();
-
-    // All restores the full list.
+    authFetch.mockClear();
     await user.click(screen.getByRole("button", { name: "All (3)" }));
-    expect(
-      screen.getByRole("cell", { name: "Alpha / Invoices / 2024" }),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("cell", { name: "Beta / Legal / Contracts" }),
-    ).toBeDefined();
-    expect(screen.getByRole("cell", { name: "Gamma / Archive" })).toBeDefined();
+    expect(authFetch).toHaveBeenCalledWith(
+      `/api/jobs/${JOB_ID}/tasks?limit=50`,
+    );
   });
 
-  it("clicking the active filter again restores the full list", async () => {
+  it("offers a Show more control while the loaded window is shorter than the count", async () => {
+    const fullPage = Array.from({ length: 50 }, (_, i) =>
+      task({ id: `t${i}` }),
+    );
+    authFetch.mockResolvedValue({ items: fullPage, nextCursor: "cursor-1" });
     const user = userEvent.setup();
-    render(<TaskTable files={files} tasks={tasks} />);
+    renderTable({ tasksCount: 120 });
 
-    const filter = screen.getByRole("button", { name: "Failed (1)" });
-    await user.click(filter);
-    expect(
-      screen.queryByRole("cell", { name: "Alpha / Invoices / 2024" }),
-    ).toBeNull();
-    await user.click(filter);
-    expect(
-      screen.getByRole("cell", { name: "Alpha / Invoices / 2024" }),
-    ).toBeDefined();
+    const more = await screen.findByRole("button", {
+      name: "Show more (70 left)",
+    });
+    authFetch.mockClear();
+    await user.click(more);
+    expect(authFetch).toHaveBeenCalledWith(
+      `/api/jobs/${JOB_ID}/tasks?limit=100`,
+    );
   });
 
-  it("shows a distinct message when the job has no tasks", () => {
-    render(<TaskTable files={[]} tasks={[]} />);
+  it("shows a distinct message when the job has no tasks", async () => {
+    authFetch.mockResolvedValue({ items: [], nextCursor: null });
+    renderTable({ tasksCount: 0, counts: { ...counts, pending: 0 } });
     expect(screen.getByText("This job has no tasks.")).toBeDefined();
     expect(
       screen.queryByText("No tasks match the selected filters."),
     ).toBeNull();
+  });
+
+  it("shows the empty-filter message when a status has no rows", async () => {
+    authFetch.mockResolvedValue({ items: [], nextCursor: null });
+    const user = userEvent.setup();
+    renderTable({});
+
+    await user.click(
+      await screen.findByRole("button", { name: "In progress (0)" }),
+    );
+    expect(
+      await screen.findByText("No tasks match the selected filters."),
+    ).toBeDefined();
   });
 });

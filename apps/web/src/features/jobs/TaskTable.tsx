@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "../../components/Card";
 import {
   JobFileResponse,
   JobTaskResponse,
+  TaskCounts,
   TaskStatus,
 } from "@docbridge/contracts";
 import { humanSize } from "../../lib/format";
+import { useJobTasks } from "./api";
 import { describeTaskError } from "./task-errors";
+
+const TASK_PAGE_SIZE = 50;
 
 const TASK_FILTERS: { status: TaskStatus; label: string }[] = [
   { status: "pending", label: "Pending" },
@@ -27,8 +31,7 @@ const STATUS_BADGES: Record<TaskStatus, string> = {
   in_progress: "bg-accent-soft text-accent",
   completed:
     "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300",
-  failed:
-    "bg-rose-500/10 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300",
+  failed: "bg-rose-500/10 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300",
 };
 
 export function TaskStatusBadge({ task }: { task: JobTaskResponse }) {
@@ -62,32 +65,53 @@ function TaskError({ task }: { task: JobTaskResponse }) {
   );
 }
 
+function countOf(counts: TaskCounts, status: TaskStatus): number {
+  return status === "in_progress" ? counts.inProgress : counts[status];
+}
+
 export function TaskTable({
+  jobId,
   files,
-  tasks,
+  counts,
+  tasksCount,
 }: {
+  jobId: string;
   files: JobFileResponse[];
-  tasks: JobTaskResponse[];
+  counts: TaskCounts;
+  tasksCount: number;
 }) {
   const [selected, setSelected] = useState<TaskStatus | null>(null);
-  const counts = useMemo(() => {
-    const result: Record<TaskStatus, number> = {
-      pending: 0,
-      in_progress: 0,
-      completed: 0,
-      failed: 0,
-    };
-    for (const task of tasks) {
-      result[task.status] += 1;
+  const [limit, setLimit] = useState(TASK_PAGE_SIZE);
+  // The status filter is applied server-side, so switching chips restarts
+  // the loaded window at the first page.
+  useEffect(() => {
+    setLimit(TASK_PAGE_SIZE);
+  }, [selected]);
+
+  const countsKey = `${counts.pending},${counts.inProgress},${counts.completed},${counts.failed}`;
+  const query = useJobTasks(jobId, selected, limit, countsKey);
+  const tasks = useMemo(() => query.data?.items ?? [], [query.data]);
+  const expected = selected === null ? tasksCount : countOf(counts, selected);
+  const hasMore = tasks.length >= limit && tasks.length < expected;
+
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || typeof IntersectionObserver === "undefined") {
+      return;
     }
-    return result;
-  }, [tasks]);
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setLimit((l) => l + TASK_PAGE_SIZE);
+      }
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore]);
+
   const groups = useMemo(() => {
     const byFile = new Map<string, JobTaskResponse[]>();
     for (const task of tasks) {
-      if (selected !== null && task.status !== selected) {
-        continue;
-      }
       const list = byFile.get(task.fileId) ?? [];
       list.push(task);
       byFile.set(task.fileId, list);
@@ -106,7 +130,7 @@ export function TaskTable({
       });
     }
     return mapped;
-  }, [files, tasks, selected]);
+  }, [files, tasks]);
 
   return (
     <div className="space-y-4">
@@ -122,7 +146,7 @@ export function TaskTable({
               : "border-line bg-surface text-muted"
           }`}
         >
-          All ({tasks.length})
+          All ({tasksCount})
         </button>
         {TASK_FILTERS.map(({ status, label }) => {
           const active = selected === status;
@@ -140,51 +164,73 @@ export function TaskTable({
                   : "border-line bg-surface text-muted"
               }`}
             >
-              {label} ({counts[status]})
+              {label} ({countOf(counts, status)})
             </button>
           );
         })}
       </div>
-      {tasks.length === 0 ? (
+      {tasksCount === 0 ? (
         <p className="text-sm text-muted">This job has no tasks.</p>
-      ) : groups.length === 0 ? (
+      ) : query.isPending ? (
+        <p className="text-sm text-muted">Loading tasks…</p>
+      ) : query.isError ? (
+        <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
+          Failed to load tasks.
+        </p>
+      ) : tasks.length === 0 ? (
         <p className="text-sm text-muted">
           No tasks match the selected filters.
         </p>
       ) : (
-        groups.map(({ file, tasks: fileTasks }) => (
-          <Card key={file.id}>
-            <h3 className="text-sm font-medium text-ink">
-              {file.name}{" "}
-              <span className="font-normal text-muted">
-                {humanSize(file.sizeBytes)} · {fileTasks.length}{" "}
-                {fileTasks.length === 1 ? "destination" : "destinations"}
-              </span>
-            </h3>
-            <table className="mt-2 w-full divide-y divide-line border-t border-line text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted">
-                  <th className="py-2 font-medium">Destination</th>
-                  <th className="py-2 font-medium">Status</th>
-                  <th className="py-2 font-medium">Last error</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {fileTasks.map((task) => (
-                  <tr key={task.id}>
-                    <td className="py-2 text-ink">{task.destination.path}</td>
-                    <td className="py-2">
-                      <TaskStatusBadge task={task} />
-                    </td>
-                    <td className="py-2 text-xs">
-                      <TaskError task={task} />
-                    </td>
+        <>
+          {groups.map(({ file, tasks: fileTasks }) => (
+            <Card key={file.id}>
+              <h3 className="text-sm font-medium text-ink">
+                {file.name}{" "}
+                <span className="font-normal text-muted">
+                  {humanSize(file.sizeBytes)} · {fileTasks.length}{" "}
+                  {fileTasks.length === 1 ? "destination" : "destinations"}
+                </span>
+              </h3>
+              <table className="mt-2 w-full divide-y divide-line border-t border-line text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted">
+                    <th className="py-2 font-medium">Destination</th>
+                    <th className="py-2 font-medium">Status</th>
+                    <th className="py-2 font-medium">Last error</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        ))
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {fileTasks.map((task) => (
+                    <tr key={task.id}>
+                      <td className="py-2 text-ink">{task.destination.path}</td>
+                      <td className="py-2">
+                        <TaskStatusBadge task={task} />
+                      </td>
+                      <td className="py-2 text-xs">
+                        <TaskError task={task} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          ))}
+          {hasMore && (
+            <div className="text-center">
+              <div ref={sentinelRef} />
+              <button
+                type="button"
+                onClick={() => setLimit((l) => l + TASK_PAGE_SIZE)}
+                className="rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-muted hover:text-ink"
+              >
+                {query.isFetching
+                  ? "Loading…"
+                  : `Show more (${expected - tasks.length} left)`}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

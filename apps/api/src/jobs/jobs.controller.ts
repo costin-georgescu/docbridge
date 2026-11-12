@@ -21,6 +21,8 @@ import {
   JobFileDownloadResponse,
   JobListQuery,
   JobListResponse,
+  JobTaskListQuery,
+  JobTaskListResponse,
   type UserClaims,
 } from "@docbridge/contracts";
 import { RateLimiterRegistry } from "@docbridge/rate-limit";
@@ -74,6 +76,16 @@ export class JobsController {
     @Param("id") id: string,
   ): Promise<JobDetailResponse> {
     return this.jobs.getJob(claims, id);
+  }
+
+  @Get(":id/tasks")
+  @RequireUser()
+  listJobTasks(
+    @Claims() claims: UserClaims,
+    @Param("id") id: string,
+    @Query(new ZodValidationPipe(JobTaskListQuery)) query: JobTaskListQuery,
+  ): Promise<JobTaskListResponse> {
+    return this.jobs.listJobTasks(claims, id, query);
   }
 
   @Post(":id/files/:fileId/download-url")

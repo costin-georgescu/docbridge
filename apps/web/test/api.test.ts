@@ -5,7 +5,12 @@ jest.mock("../src/auth/session", () => ({
 }));
 
 import { session } from "../src/auth/session";
-import { fetchJob, isFinalJobStatus, listJobs } from "../src/features/jobs/api";
+import {
+  fetchJob,
+  fetchJobTasks,
+  isFinalJobStatus,
+  listJobs,
+} from "../src/features/jobs/api";
 
 const authFetch = jest.mocked(session.authFetch);
 
@@ -51,6 +56,37 @@ describe("fetchJob", () => {
     await fetchJob("33333333-0000-4000-8000-000000000003");
     expect(authFetch).toHaveBeenCalledWith(
       "/api/jobs/33333333-0000-4000-8000-000000000003",
+    );
+  });
+});
+
+describe("fetchJobTasks", () => {
+  beforeEach(() => {
+    authFetch.mockClear();
+  });
+
+  const JOB_ID = "33333333-0000-4000-8000-000000000003";
+
+  it("requests tasks with no parameters by default", async () => {
+    authFetch.mockResolvedValue({ items: [], nextCursor: null });
+    await fetchJobTasks(JOB_ID);
+    expect(authFetch).toHaveBeenCalledWith(`/api/jobs/${JOB_ID}/tasks`);
+  });
+
+  it("passes status, cursor and limit as query parameters", async () => {
+    authFetch.mockResolvedValue({ items: [], nextCursor: null });
+    await fetchJobTasks(JOB_ID, {
+      status: "failed",
+      cursor: "2026-10-30T09:30:00.000Z~some-id",
+      limit: 100,
+    });
+    const params = new URLSearchParams({
+      status: "failed",
+      cursor: "2026-10-30T09:30:00.000Z~some-id",
+      limit: "100",
+    });
+    expect(authFetch).toHaveBeenCalledWith(
+      `/api/jobs/${JOB_ID}/tasks?${params}`,
     );
   });
 });

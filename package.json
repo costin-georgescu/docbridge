@@ -27,6 +27,7 @@
     "perf:clean": "node --env-file=.env --import tsx tests/perf/seed.ts --cleanup",
     "perf:jobs": "docker run --rm -i --network docbridge_default -v \"$PWD/tests/perf:/perf:ro\" grafana/k6:2.3.0 run /perf/submit-job.js",
     "perf:tree": "docker run --rm -i --network docbridge_default -v \"$PWD/tests/perf:/perf:ro\" grafana/k6:2.3.0 run /perf/tree.js",
+    "perf:job-detail": "docker run --rm -i --network docbridge_default -v \"$PWD/tests/perf:/perf:ro\" grafana/k6:2.3.0 run /perf/job-detail.js",
     "auth:keygen": "node scripts/gen-signing-key.mjs",
     "aws:jwt-key": "node scripts/gen-signing-key.mjs --aws-secret"
   },

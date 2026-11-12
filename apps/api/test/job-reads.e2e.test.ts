@@ -331,14 +331,94 @@ run("job reads e2e", () => {
       expect(res.body.error.code).toBe("job_not_visible");
     });
 
-    it("returns the job with files and tasks joined to staged files", async () => {
-      const folderId = uuidv7();
+    it("returns the summary, files and retrying count without task rows", async () => {
       const job = await seedJob({
         teams: [TEAM_1],
         files: [
           { name: "alpha.pdf", sizeBytes: 100 },
           { name: "beta.pdf", sizeBytes: 200 },
         ],
+        tasks: [
+          { fileIndex: 0, status: "failed", attemptCount: 1 },
+          { fileIndex: 1, status: "completed", attemptCount: 1 },
+          { fileIndex: 1, status: "pending", attemptCount: 2 },
+          { fileIndex: 1, status: "pending", attemptCount: 0 },
+        ],
+      });
+
+      const token = await userToken(OWNER_D, [TEAM_1]);
+      const res = await api()
+        .get(`/api/jobs/${job.jobId}`)
+        .set(bearer(token))
+        .expect(200);
+
+      expect(res.body.id).toBe(job.jobId);
+      expect(res.body.filesCount).toBe(2);
+      expect(res.body.tasksCount).toBe(4);
+      expect(res.body.status).toBe("in_progress");
+      expect(res.body.counts).toEqual({
+        pending: 2,
+        inProgress: 0,
+        completed: 1,
+        failed: 1,
+      });
+      expect(res.body.retrying).toBe(1);
+      expect(res.body.tasks).toBeUndefined();
+
+      const filesById = new Map(
+        res.body.files.map((f: { id: string }) => [f.id, f]),
+      );
+      expect(filesById.get(job.fileIds[0])).toMatchObject({
+        name: "alpha.pdf",
+        sizeBytes: 100,
+      });
+      expect(filesById.get(job.fileIds[1])).toMatchObject({
+        name: "beta.pdf",
+        sizeBytes: 200,
+      });
+    });
+  });
+
+  describe("GET /api/jobs/:id/tasks", () => {
+    it("rejects requests without a token", async () => {
+      const res = await api().get(`/api/jobs/${uuidv7()}/tasks`).expect(401);
+      expect(res.body.error.code).toBe("unauthorized");
+    });
+
+    it("answers 403 job_not_visible for missing, malformed and foreign-team jobs", async () => {
+      const foreign = await seedJob({ teams: [TEAM_FOREIGN], tasks: [{}] });
+      const token = await userToken(OWNER_C, [TEAM_1]);
+      for (const jobId of [uuidv7(), "not-a-uuid", foreign.jobId]) {
+        const res = await api()
+          .get(`/api/jobs/${jobId}/tasks`)
+          .set(bearer(token))
+          .expect(403);
+        expect(res.body.error.code).toBe("job_not_visible");
+      }
+    });
+
+    it("rejects an invalid status, limit and cursor with 422", async () => {
+      const job = await seedJob({ teams: [TEAM_1], tasks: [{}] });
+      const token = await userToken(OWNER_C, [TEAM_1]);
+      for (const qs of [
+        "status=bogus",
+        "limit=0",
+        `limit=${2001}`,
+        "cursor=not-a-cursor",
+      ]) {
+        const res = await api()
+          .get(`/api/jobs/${job.jobId}/tasks?${qs}`)
+          .set(bearer(token))
+          .expect(422);
+        expect(res.body.error.code).toBe("validation_error");
+      }
+    });
+
+    it("returns task rows in created order with error and timing fields", async () => {
+      const folderId = uuidv7();
+      const job = await seedJob({
+        teams: [TEAM_1],
+        files: [{ name: "alpha.pdf" }, { name: "beta.pdf" }],
         tasks: [
           {
             fileIndex: 0,
@@ -358,51 +438,82 @@ run("job reads e2e", () => {
 
       const token = await userToken(OWNER_D, [TEAM_1]);
       const res = await api()
-        .get(`/api/jobs/${job.jobId}`)
+        .get(`/api/jobs/${job.jobId}/tasks`)
         .set(bearer(token))
         .expect(200);
 
-      expect(res.body.id).toBe(job.jobId);
-      expect(res.body.filesCount).toBe(2);
-      expect(res.body.tasksCount).toBe(3);
-      expect(res.body.status).toBe("in_progress");
-      expect(res.body.counts).toEqual({
-        pending: 1,
-        inProgress: 0,
-        completed: 1,
-        failed: 1,
-      });
-
-      const filesById = new Map(
-        res.body.files.map((f: { id: string }) => [f.id, f]),
-      );
-      expect(filesById.get(job.fileIds[0])).toMatchObject({
-        name: "alpha.pdf",
-        sizeBytes: 100,
-      });
-      expect(filesById.get(job.fileIds[1])).toMatchObject({
-        name: "beta.pdf",
-        sizeBytes: 200,
-      });
-
-      expect(res.body.tasks).toHaveLength(3);
-      const failedTask = res.body.tasks.find(
-        (t: { status: string }) => t.status === "failed",
-      );
+      expect(res.body.items).toHaveLength(3);
+      expect(res.body.nextCursor).toBeNull();
+      const failedTask = res.body.items[0];
       expect(failedTask).toMatchObject({
         fileId: job.fileIds[0],
         destination: { folderId, path: "Team One / Binder / Inbox" },
+        status: "failed",
         attemptCount: 1,
         lastError: { code: "folder_not_found", message: "Folder was deleted" },
         startedAt: "2026-10-10T10:00:00.000Z",
         finishedAt: "2026-10-10T10:00:05.000Z",
       });
-      const pendingTask = res.body.tasks.find(
-        (t: { status: string }) => t.status === "pending",
-      );
+      const pendingTask = res.body.items[2];
       expect(pendingTask.fileId).toBe(job.fileIds[1]);
       expect(pendingTask.attemptCount).toBe(2);
       expect(pendingTask.lastError).toBeNull();
+    });
+
+    it("paginates with a keyset cursor in created order", async () => {
+      const job = await seedJob({
+        teams: [TEAM_1],
+        tasks: [{}, {}, {}, {}, {}],
+      });
+      const token = await userToken(OWNER_C, [TEAM_1]);
+
+      const page1 = await api()
+        .get(`/api/jobs/${job.jobId}/tasks?limit=2`)
+        .set(bearer(token))
+        .expect(200);
+      expect(page1.body.items).toHaveLength(2);
+      expect(page1.body.nextCursor).not.toBeNull();
+      const firstIds = page1.body.items.map((t: { id: string }) => t.id);
+
+      const seen = new Set(firstIds);
+      let cursor: string | null = page1.body.nextCursor;
+      while (cursor !== null) {
+        const res = await api()
+          .get(
+            `/api/jobs/${job.jobId}/tasks?limit=2&cursor=${encodeURIComponent(cursor)}`,
+          )
+          .set(bearer(token))
+          .expect(200);
+        for (const item of res.body.items as { id: string }[]) {
+          expect(seen.has(item.id)).toBe(false);
+          seen.add(item.id);
+        }
+        cursor = res.body.nextCursor;
+      }
+      expect(seen.size).toBe(5);
+    });
+
+    it("filters tasks by status server-side", async () => {
+      const job = await seedJob({
+        teams: [TEAM_1],
+        tasks: [
+          { status: "completed" },
+          { status: "completed" },
+          { status: "failed" },
+          { status: "pending" },
+        ],
+      });
+      const token = await userToken(OWNER_C, [TEAM_1]);
+      const res = await api()
+        .get(`/api/jobs/${job.jobId}/tasks?status=completed`)
+        .set(bearer(token))
+        .expect(200);
+      expect(res.body.items).toHaveLength(2);
+      expect(
+        res.body.items.every(
+          (t: { status: string }) => t.status === "completed",
+        ),
+      ).toBe(true);
     });
   });
 

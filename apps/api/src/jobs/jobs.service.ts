@@ -8,11 +8,15 @@ import {
   deriveJobStatus,
   encodeJobCursor,
   ErrorCode,
+  encodeTaskCursor,
   JobDetailResponse,
   JobFileDownloadResponse,
   JobListQuery,
   JobListResponse,
   JobSummary,
+  JobTaskListQuery,
+  JobTaskListResponse,
+  JobTaskResponse,
   TaskCounts,
   type UserClaims,
 } from "@docbridge/contracts";
@@ -207,6 +211,9 @@ export class JobsService {
     };
   }
 
+  // The detail poll runs every 3 s per viewer; it returns only the summary
+  // (counts + files, both bounded) — task rows are paged separately through
+  // listJobTasks so a 2,000-task job doesn't push 2,000 rows per poll.
   async getJob(claims: UserClaims, id: string): Promise<JobDetailResponse> {
     const job = z.uuid().safeParse(id).success
       ? await this.prisma.db.job.findFirst({
@@ -216,7 +223,6 @@ export class JobsService {
               select: { id: true, fileName: true, sizeBytes: true },
               orderBy: { id: "asc" },
             },
-            tasks: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
           },
         })
       : null;
@@ -227,36 +233,64 @@ export class JobsService {
         "Job not found or not visible",
       );
     }
-    const counts = { pending: 0, inProgress: 0, completed: 0, failed: 0 };
-    let pendingAttempts = 0;
-    for (const task of job.tasks) {
-      counts[countKey(task.status)] += 1;
-      if (task.status === "pending") {
-        pendingAttempts += task.attemptCount;
-      }
-    }
+    const counts = await this.countJobTasks(job.id);
     return {
-      ...this.toSummary(job, { ...counts, pendingAttempts }),
+      ...this.toSummary(job, counts),
+      retrying: counts.retrying,
       files: job.stagedFiles.map((file) => ({
         id: file.id,
         name: file.fileName,
         sizeBytes: Number(file.sizeBytes),
       })),
-      tasks: job.tasks.map((task) => ({
-        id: task.id,
-        fileId: task.stagedFileId,
-        destination: {
-          folderId: task.destinationFolderId,
-          path: task.destinationPath,
-        },
-        status: task.status,
-        attemptCount: task.attemptCount,
-        lastError: task.lastErrorCode
-          ? { code: task.lastErrorCode, message: task.lastErrorMessage }
+    };
+  }
+
+  async listJobTasks(
+    claims: UserClaims,
+    jobId: string,
+    query: JobTaskListQuery,
+  ): Promise<JobTaskListResponse> {
+    const visible = z.uuid().safeParse(jobId).success
+      ? await this.prisma.db.job.findFirst({
+          where: {
+            id: jobId,
+            teams: { some: { teamId: { in: claims.teams } } },
+          },
+          select: { id: true },
+        })
+      : null;
+    if (!visible) {
+      throw new AppError(
+        403,
+        "job_not_visible",
+        "Job not found or not visible",
+      );
+    }
+    const rows = await this.prisma.db.task.findMany({
+      where: {
+        jobId,
+        ...(query.status !== undefined && { status: query.status }),
+        ...(query.cursor && {
+          OR: [
+            { createdAt: { gt: query.cursor.createdAt } },
+            {
+              createdAt: query.cursor.createdAt,
+              id: { gt: query.cursor.id },
+            },
+          ],
+        }),
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: query.limit + 1,
+    });
+    const page = rows.slice(0, query.limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((task) => this.toTaskResponse(task)),
+      nextCursor:
+        rows.length > query.limit && last
+          ? encodeTaskCursor({ createdAt: last.createdAt, id: last.id })
           : null,
-        startedAt: task.startedAt?.toISOString() ?? null,
-        finishedAt: task.finishedAt?.toISOString() ?? null,
-      })),
     };
   }
 
@@ -304,6 +338,72 @@ export class JobsService {
       expiresIn: GET_URL_TTL_SECONDS,
     });
     return { url, expiresAt: expiresAtIso(GET_URL_TTL_SECONDS) };
+  }
+
+  // Single-pass aggregate for one job: status counts plus the two
+  // pending-task sub-aggregates (summed attempts for status derivation,
+  // task count with attempts for the "retrying" header chip).
+  private async countJobTasks(
+    jobId: string,
+  ): Promise<TaskCounts & { pendingAttempts: number; retrying: number }> {
+    const [row] = await this.prisma.db.$queryRaw<
+      {
+        pending: number;
+        in_progress: number;
+        completed: number;
+        failed: number;
+        pending_attempts: number;
+        retrying: number;
+      }[]
+    >`
+      SELECT
+        count(*) FILTER (WHERE status = 'pending')::int AS pending,
+        count(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
+        count(*) FILTER (WHERE status = 'completed')::int AS completed,
+        count(*) FILTER (WHERE status = 'failed')::int AS failed,
+        COALESCE(sum(attempt_count) FILTER (WHERE status = 'pending'), 0)::int
+          AS pending_attempts,
+        count(*) FILTER (WHERE status = 'pending' AND attempt_count > 0)::int
+          AS retrying
+      FROM tasks
+      WHERE job_id = ${jobId}::uuid`;
+    return {
+      pending: row?.pending ?? 0,
+      inProgress: row?.in_progress ?? 0,
+      completed: row?.completed ?? 0,
+      failed: row?.failed ?? 0,
+      pendingAttempts: row?.pending_attempts ?? 0,
+      retrying: row?.retrying ?? 0,
+    };
+  }
+
+  private toTaskResponse(task: {
+    id: string;
+    stagedFileId: string;
+    destinationFolderId: string;
+    destinationPath: string;
+    status: TaskStatus;
+    attemptCount: number;
+    lastErrorCode: string | null;
+    lastErrorMessage: string | null;
+    startedAt: Date | null;
+    finishedAt: Date | null;
+  }): JobTaskResponse {
+    return {
+      id: task.id,
+      fileId: task.stagedFileId,
+      destination: {
+        folderId: task.destinationFolderId,
+        path: task.destinationPath,
+      },
+      status: task.status,
+      attemptCount: task.attemptCount,
+      lastError: task.lastErrorCode
+        ? { code: task.lastErrorCode, message: task.lastErrorMessage }
+        : null,
+      startedAt: task.startedAt?.toISOString() ?? null,
+      finishedAt: task.finishedAt?.toISOString() ?? null,
+    };
   }
 
   private async countTasksByStatus(
