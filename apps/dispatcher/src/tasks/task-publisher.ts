@@ -45,9 +45,13 @@ export class TaskPublisher
     this.loop = (async () => {
       while (!this.abort.signal.aborted) {
         try {
-          await this.republishStuckOnce();
+          const republished = await this.republishStuckOnce();
           const published = await this.publishOnce();
-          if (published === CLAIM_BATCH_SIZE) continue;
+          if (
+            published === CLAIM_BATCH_SIZE ||
+            republished === CLAIM_BATCH_SIZE
+          )
+            continue;
         } catch (e) {
           if (this.abort.signal.aborted) break;
           this.logger.error("publish loop failed", e as Error);
@@ -100,16 +104,30 @@ export class TaskPublisher
    * still in flight is harmless: workers deduplicate by task status.
    */
   async republishStuckOnce(): Promise<number> {
-    const stuck = await this.prisma.db.$queryRaw<ClaimedTask[]>`
-      SELECT id, job_id FROM tasks
-      WHERE status IN ('pending', 'in_progress')
-        AND dispatched_at IS NOT NULL
-        AND COALESCE(started_at, dispatched_at) < now() - interval '25 minutes'`;
-    if (stuck.length === 0) return 0;
+    return this.prisma.db.$transaction(async (tx) => {
+      const stuck = await tx.$queryRaw<ClaimedTask[]>`
+        SELECT id, job_id FROM tasks
+        WHERE status IN ('pending', 'in_progress')
+          AND dispatched_at IS NOT NULL
+          AND GREATEST(started_at, dispatched_at) < now() - interval '25 minutes'
+        ORDER BY GREATEST(started_at, dispatched_at)
+        LIMIT ${CLAIM_BATCH_SIZE}
+        FOR UPDATE SKIP LOCKED`;
+      if (stuck.length === 0) return 0;
 
-    const published = await this.sendBatches(stuck);
-    this.logger.log(`re-published ${published.length}/${stuck.length} stuck tasks`);
-    return published.length;
+      const published = await this.sendBatches(stuck);
+      if (published.length > 0) {
+        const idList = Prisma.Prisma.join(
+          published.map((id) => Prisma.Prisma.sql`${id}::uuid`),
+        );
+        await tx.$executeRaw`
+          UPDATE tasks SET dispatched_at = now() WHERE id IN (${idList})`;
+      }
+      this.logger.log(
+        `re-published ${published.length}/${stuck.length} stuck tasks`,
+      );
+      return published.length;
+    });
   }
 
   /** SendMessageBatch in groups of 10; returns the ids that were accepted. */

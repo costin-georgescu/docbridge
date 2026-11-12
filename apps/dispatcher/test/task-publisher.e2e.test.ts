@@ -8,7 +8,11 @@ import {
   SQSClient,
 } from "@aws-sdk/client-sqs";
 import { TaskMessage } from "@docbridge/contracts";
-import { createClient, PrismaClient, TaskStatus } from "@docbridge/db-docbridge";
+import {
+  createClient,
+  PrismaClient,
+  TaskStatus,
+} from "@docbridge/db-docbridge";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { SqsService } from "../src/sqs/sqs.service";
@@ -83,7 +87,11 @@ run("task-publisher e2e", () => {
 
   async function insertJobWithTasks(
     count: number,
-    opts: { dispatchedAt?: Date | null; status?: TaskStatus } = {},
+    opts: {
+      dispatchedAt?: Date | null;
+      startedAt?: Date | null;
+      status?: TaskStatus;
+    } = {},
   ) {
     const jobId = randomUUID();
     const fileId = randomUUID();
@@ -124,6 +132,9 @@ run("task-publisher e2e", () => {
           status: opts.status ?? "pending",
           ...(opts.dispatchedAt !== undefined
             ? { dispatchedAt: opts.dispatchedAt }
+            : {}),
+          ...(opts.startedAt !== undefined
+            ? { startedAt: opts.startedAt }
             : {}),
         },
       });
@@ -231,5 +242,126 @@ run("task-publisher e2e", () => {
       .filter(Boolean)
       .sort();
     expect(seen).toEqual([...taskIds].sort());
+  }, 60_000);
+
+  async function cleanStaleTasks() {
+    await db.task.updateMany({
+      where: {
+        jobId: { in: insertedJobIds },
+        status: { in: ["pending", "in_progress"] },
+        dispatchedAt: { not: null },
+      },
+      data: { dispatchedAt: new Date(), startedAt: null },
+    });
+  }
+
+  it("stuck sweep re-sends each task at most once per window", async () => {
+    await cleanStaleTasks();
+    const stale = new Date(Date.now() - 30 * 60_000);
+    const a = await insertJobWithTasks(1, {
+      dispatchedAt: stale,
+      startedAt: null,
+      status: "pending",
+    });
+    const b = await insertJobWithTasks(1, {
+      dispatchedAt: stale,
+      startedAt: stale,
+      status: "pending",
+    });
+    const c = await insertJobWithTasks(1, {
+      dispatchedAt: stale,
+      startedAt: stale,
+      status: "in_progress",
+    });
+    const taskIds = [a.taskIds[0], b.taskIds[0], c.taskIds[0]];
+    await drainQueue();
+
+    expect(await publisher.republishStuckOnce()).toBe(3);
+    const bodies = await receiveBodies(3);
+    const seen = bodies
+      .map((body) => TaskMessage.safeParse(body).data?.taskId)
+      .filter(Boolean)
+      .sort();
+    expect(seen).toEqual([...taskIds].sort());
+
+    expect(await publisher.republishStuckOnce()).toBe(0);
+
+    const tasks = await db.task.findMany({ where: { id: { in: taskIds } } });
+    const oneMinuteAgo = Date.now() - 60_000;
+    for (const t of tasks) {
+      expect(t.dispatchedAt!.getTime()).toBeGreaterThan(oneMinuteAgo);
+    }
+    await drainQueue();
+  }, 60_000);
+
+  it("two concurrent sweeps re-send each stuck task once", async () => {
+    await cleanStaleTasks();
+    const stale = new Date(Date.now() - 30 * 60_000);
+    const { taskIds } = await insertJobWithTasks(20, {
+      dispatchedAt: stale,
+      status: "pending",
+    });
+    await drainQueue();
+
+    const secondDb = new PrismaService();
+    const second = new TaskPublisher(secondDb, new SqsService());
+    const [republishedA, republishedB] = await Promise.all([
+      publisher.republishStuckOnce(),
+      second.republishStuckOnce(),
+    ]);
+    await secondDb.db.$disconnect();
+
+    expect(republishedA + republishedB).toBe(20);
+    const bodies = await receiveBodies(20);
+    const seen = bodies
+      .map((b) => TaskMessage.safeParse(b).data?.taskId)
+      .filter(Boolean)
+      .sort();
+    expect(seen).toEqual([...taskIds].sort());
+  }, 60_000);
+
+  it("stuck sweep leaves SQS-rejected entries due for the next pass", async () => {
+    await cleanStaleTasks();
+    const stale = new Date(Date.now() - 30 * 60_000);
+    const { taskIds } = await insertJobWithTasks(3, {
+      dispatchedAt: stale,
+      status: "pending",
+    });
+    await drainQueue();
+
+    const secondDb = new PrismaService();
+    const fakeSqs = {
+      tasksQueueUrl: "unused",
+      sqs: {
+        send: async (cmd: { input: { Entries: { Id: string }[] } }) => ({
+          Successful: cmd.input.Entries.slice(1),
+          Failed: [
+            {
+              Id: cmd.input.Entries[0].Id,
+              Code: "x",
+              Message: "x",
+              SenderFault: false,
+            },
+          ],
+        }),
+      },
+    } as unknown as SqsService;
+    const failing = new TaskPublisher(secondDb, fakeSqs);
+
+    expect(await failing.republishStuckOnce()).toBe(2);
+    await secondDb.db.$disconnect();
+
+    const tasks = await db.task.findMany({ where: { id: { in: taskIds } } });
+    const rejected = tasks.filter(
+      (t) => t.dispatchedAt!.getTime() === stale.getTime(),
+    );
+    const bumped = tasks.filter(
+      (t) => t.dispatchedAt!.getTime() > Date.now() - 60_000,
+    );
+    expect(rejected).toHaveLength(1);
+    expect(bumped).toHaveLength(2);
+
+    expect(await publisher.republishStuckOnce()).toBe(1);
+    await drainQueue();
   }, 60_000);
 });
